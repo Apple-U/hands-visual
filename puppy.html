@@ -4,224 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🐶 Puppy Chase · 小狗追指尖</title>
-  <style>
-    :root {
-      --bg: #0f0a14;
-      --fg: #fff5f0;
-      --accent: #ffb38a;
-      --accent2: #ffd6a5;
-      --muted: #b8a89a;
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0; padding: 0;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
-      overflow: hidden;
-      height: 100%;
-    }
-    #stage {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #000;
-    }
-    #wrap {
-      --aspect-w: 2.35;
-      --aspect-h: 1;
-      position: relative;
-      width: min(100vw, calc(100vh * var(--aspect-w) / var(--aspect-h)));
-      height: min(100vh, calc(100vw * var(--aspect-h) / var(--aspect-w)));
-      max-width: 100vw;
-      max-height: 100vh;
-      overflow: hidden;
-      background: #000;
-      border-radius: 6px;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 24px 60px rgba(0, 0, 0, 0.6);
-    }
-    video {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      transform: scaleX(-1);
-      visibility: hidden;
-    }
-    canvas {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      display: block;
-    }
-    #fxCanvas { pointer-events: none; }
-    #puppySprite {
-      position: absolute;
-      left: 50%;
-      top: 75%;
-      width: 13%;
-      height: auto;
-      z-index: 3;
-      pointer-events: none;
-      user-select: none;
-      image-rendering: auto;
-      --puppy-anchor-y: -55%;
-      --puppy-facing: 1;
-      transform: translate(-50%, var(--puppy-anchor-y)) scaleX(var(--puppy-facing));
-      transform-origin: 50% 55%;
-      will-change: left, top, width, transform;
-    }
-
-    .hud {
-      position: fixed;
-      top: 16px; left: 16px;
-      z-index: 10;
-      display: flex; flex-direction: column; gap: 8px;
-      pointer-events: none;
-    }
-    .badge {
-      background: rgba(20, 12, 24, 0.7);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,179,138,0.18);
-      padding: 8px 14px;
-      border-radius: 999px;
-      font-size: 13px;
-      letter-spacing: 0.3px;
-      display: inline-flex; align-items: center; gap: 8px;
-      width: fit-content;
-    }
-    .badge .dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #ffb84d;
-      box-shadow: 0 0 10px #ffb84d;
-    }
-    .badge.ok .dot { background: #ffd6a5; box-shadow: 0 0 10px #ffd6a5; }
-
-    #panel {
-      position: fixed;
-      top: 16px; right: 16px;
-      z-index: 10;
-      width: 260px;
-      background: rgba(20, 12, 24, 0.7);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid rgba(255,179,138,0.18);
-      border-radius: 16px;
-      padding: 14px 16px;
-      font-size: 13px;
-      line-height: 1.7;
-      pointer-events: auto;
-    }
-    #panelToggle {
-      width: 100%;
-      margin: 0;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      text-align: left;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    #panelToggle::after {
-      content: '展开';
-      float: right;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--muted);
-      -webkit-text-fill-color: var(--muted);
-    }
-    #panel:not(.collapsed) #panelToggle {
-      margin-bottom: 8px;
-    }
-    #panel:not(.collapsed) #panelToggle::after {
-      content: '收起';
-    }
-    #panel.collapsed #panelContent {
-      display: none;
-    }
-    #panel ul { margin: 0; padding-left: 18px; }
-    #panel li { margin-bottom: 4px; color: #ead7c8; }
-    #panel li b { color: #fff; }
-    #panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
-
-    #moodTag {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      background: rgba(255, 179, 138, 0.18);
-      border: 1px solid rgba(255, 179, 138, 0.5);
-      color: #ffe6d2;
-      padding: 14px 31px;
-      border-radius: 999px;
-      font-size: 24px;
-      letter-spacing: 1.7px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.25s ease;
-    }
-    #moodTag.show { opacity: 1; }
-
-    #loading {
-      position: fixed; inset: 0;
-      z-index: 100;
-      display: flex; align-items: center; justify-content: center;
-      flex-direction: column; gap: 18px;
-      background: radial-gradient(circle at 50% 40%, #2a1f2e 0%, #0a0610 70%);
-      transition: opacity 0.5s ease;
-    }
-    #loading.hide { opacity: 0; pointer-events: none; }
-    .loader-card {
-      display: flex; flex-direction: column; align-items: center; gap: 14px;
-      padding: 28px 36px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 18px;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-      min-width: 260px;
-    }
-    .magic-emoji {
-      font-size: 48px;
-      animation: wiggle 1.2s ease-in-out infinite;
-      filter: drop-shadow(0 0 10px rgba(255,179,138,0.6));
-    }
-    @keyframes wiggle {
-      0%, 100% { transform: rotate(-8deg) scale(1); }
-      50% { transform: rotate(10deg) scale(1.06); }
-    }
-    .loader-title {
-      font-size: 16px; font-weight: 600; color: #fff; letter-spacing: 0.5px;
-    }
-    .loader-step {
-      font-size: 13px; color: var(--muted); text-align: center; min-height: 18px;
-    }
-    .progress-track {
-      width: 240px; height: 6px;
-      background: rgba(255,255,255,0.08);
-      border-radius: 999px; overflow: hidden;
-      position: relative;
-    }
-    .progress-bar {
-      position: absolute; left: 0; top: 0; bottom: 0;
-      width: 0%;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 999px;
-      box-shadow: 0 0 12px rgba(255,179,138,0.6);
-      transition: width 0.4s ease;
-    }
-    .loader-tip {
-      font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;
-    }
-  </style>
+  <link rel="stylesheet" href="styles/puppy.css" />
 </head>
 <body>
   <div id="stage">
@@ -229,7 +12,7 @@
       <video id="video" autoplay playsinline muted></video>
       <canvas id="mainCanvas"></canvas>
       <canvas id="fxCanvas"></canvas>
-      <img id="puppySprite" src="gif/开心哼歌.gif" alt="小狗" />
+      <img id="puppySprite" src="gif/happy-humming.gif" alt="小狗" />
     </div>
   </div>
 
@@ -252,6 +35,53 @@
     </div>
   </div>
 
+  <!-- 玩球模式入口暂时对外隐藏：DOM 保留，避免影响 fetch-mode.js 的初始化逻辑；
+       以后想恢复入口，把 hidden 属性去掉即可。 -->
+  <div id="fetchPanel" class="collapsed" hidden>
+    <button id="fetchPanelToggle" type="button" aria-expanded="false" aria-controls="fetchPanelContent">🎾 玩球设置</button>
+    <div id="fetchPanelContent">
+      <div class="fetch-mode-row">
+        <span style="color:#ead7c8;">玩球模式</span>
+        <button id="fetchModeBtn" class="fetch-toggle-btn" type="button">关闭</button>
+      </div>
+
+      <div class="fetch-slider-row">
+        <label>🎾 球初速度倍率 <span class="val" id="fetchVal-ballSpeedMul">1.0</span></label>
+        <input type="range" data-cfg="ballSpeedMul" min="0.5" max="2.0" step="0.05" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>🌍 重力强度 <span class="val" id="fetchVal-gravity">0.45</span></label>
+        <input type="range" data-cfg="gravity" min="0.2" max="1.0" step="0.05" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>🏀 弹跳衰减 <span class="val" id="fetchVal-bounce">0.55</span></label>
+        <input type="range" data-cfg="bounce" min="0" max="0.85" step="0.05" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>🐕 小狗追球最大速度 <span class="val" id="fetchVal-puppyMaxSpeed">28</span></label>
+        <input type="range" data-cfg="puppyMaxSpeed" min="16" max="40" step="1" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>📐 安全区比例 <span class="val" id="fetchVal-safeZoneRatio">80%</span></label>
+        <input type="range" data-cfg="safeZoneRatio" min="0.6" max="1.0" step="0.02" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>🎲 扔偏概率 <span class="val" id="fetchVal-missChance">5%</span></label>
+        <input type="range" data-cfg="missChance" min="0" max="0.3" step="0.01" />
+      </div>
+      <div class="fetch-slider-row">
+        <label>✋ 抛球手势灵敏度 <span class="val" id="fetchVal-throwSensitivity">0.50</span></label>
+        <input type="range" data-cfg="throwSensitivity" min="0.2" max="0.9" step="0.05" />
+      </div>
+
+      <div class="fetch-actions">
+        <button id="fetchResetBtn" type="button">恢复默认</button>
+        <button id="fetchSaveBtn" class="save" type="button">✓ 确定保存</button>
+      </div>
+      <div id="fetchSaveTip"></div>
+    </div>
+  </div>
+
   <div id="moodTag"></div>
 
   <div id="loading">
@@ -264,8 +94,13 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://registry.npmmirror.com/@mediapipe/camera_utils/latest/files/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://registry.npmmirror.com/@mediapipe/hands/latest/files/hands.js" crossorigin="anonymous"></script>
+  <script>
+    window.ACTIVE_CHARACTER = (new URLSearchParams(location.search).get('character') || 'puppy').replace(/[^\w-]/g, '');
+    document.write(`<script src="characters/${window.ACTIVE_CHARACTER}.js"><\/script>`);
+  </script>
+  <script src="modules/fetch-mode.js"></script>
 
   <script>
     'use strict';
@@ -290,7 +125,9 @@
     panelToggle.addEventListener('click', () => {
       const collapsed = panel.classList.toggle('collapsed');
       panelToggle.setAttribute('aria-expanded', String(!collapsed));
+      document.body.classList.toggle('panel-open', !collapsed);
     });
+
 
     function setLoader(percent, text) {
       if (loaderBar) loaderBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
@@ -298,6 +135,13 @@
     }
     setLoader(8, '加载脚本中…');
 
+    const ACTIVE_CHARACTER = window.ACTIVE_CHARACTER || 'puppy';
+    const characterProfile = window.CHARACTER_PROFILES?.[ACTIVE_CHARACTER];
+    if (!characterProfile) {
+      throw new Error(`找不到角色配置：${ACTIVE_CHARACTER}`);
+    }
+    puppySpriteEl.alt = characterProfile.displayName || '互动角色';
+    moodText.textContent = `${characterProfile.displayName || '角色'}在等你 ${characterProfile.emoji || ''}`.trim();
 
     const state = {
       width: 1280,
@@ -322,7 +166,7 @@
       previousTargetDistance: null,
     };
 
-    // ====== 小狗：物理状态 ======
+    // ====== 互动角色：物理状态 ======
     const puppy = {
       x: 0, y: 0,             // 身体中心
       vx: 0, vy: 0,
@@ -334,7 +178,7 @@
       earWag: 0,              // 耳朵摆动相位
       blink: 0,               // 眨眼 [0=睁开, 1=闭眼]
       blinkTimer: 0,
-      mood: 'sit',            // sit | run | sniff | excited | bored | lookAround
+      mood: characterProfile.initialMood || 'sit', // sit | run | sniff | excited | bored | lookAround
       moodTimer: 0,
       targetDistanceAvg: 999,
       fingerSpeedAvg: 0,
@@ -360,6 +204,14 @@
     const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
     const pick = (items) => items[Math.floor(Math.random() * items.length)];
 
+    function interactionModeForMood(mood) {
+      return characterProfile.moodToMode?.[mood] || mood || 'fallback';
+    }
+
+    function characterBubble(key, fallback = ['...']) {
+      return pick(characterProfile.bubbles?.[key] || fallback);
+    }
+
     // 判断食指是否可跟踪：放宽手势要求，避免手指轻微弯曲就丢失。
     function isPointing(lm) {
       const wrist = lm[0];
@@ -372,13 +224,12 @@
       const pipFromMcp = dist(pip, mcp);
       return indexReach > pipReach * 0.92 || tipFromMcp > pipFromMcp * 1.05;
     }
-
     // ====== MediaPipe Hands ======
     const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+      locateFile: (file) => `https://registry.npmmirror.com/@mediapipe/hands/latest/files/${file}`,
     });
     hands.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.4,
       minTrackingConfidence: 0.25,
@@ -387,7 +238,7 @@
 
     function onResults(results) {
       if (!results.image) return;
-        if (results.image.width && results.image.width !== state.width) {
+      if (results.image.width && results.image.width !== state.width) {
         state.width = results.image.width;
         state.height = results.image.height;
         resize();
@@ -404,12 +255,17 @@
 
       let tip = null;
       let pointing = false;
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const lm = results.multiHandLandmarks[0];
+      const allHands = results.multiHandLandmarks || [];
+      if (allHands.length > 0) {
+        const lm = allHands[0];
         tip = lmToPx(lm[8]);
         // 只要手被识别到就跟踪食指尖，避免姿势不标准时频繁丢目标。
         pointing = isPointing(lm) || !!tip;
       }
+
+      // 玩球模式：抛球检测 / 邀请 OK 手势
+      if (typeof fetchMode !== 'undefined') fetchMode.handleFrame(allHands);
+
 
       if (pointing && tip) {
         state.fingerFresh = true;
@@ -436,6 +292,7 @@
 
       drawBackdrop(results.image);
       updatePuppy();
+      if (typeof fetchMode !== 'undefined') fetchMode.drawBall();
       drawPuppy();
       drawFingerMark();
       updateAndDrawParticles();
@@ -484,6 +341,12 @@
       const now = performance.now();
       const dt = 1 / 60; // 简化：固定步长
 
+      // 玩球模式：覆盖默认状态机，进入独立分支
+      if (typeof fetchMode !== 'undefined' && fetchMode.enabled) {
+        fetchMode.updatePuppy(now, dt);
+        return;
+      }
+
       // 决定目标
       let target = null;
       let fingerSpeed = 0;
@@ -526,6 +389,10 @@
         const lostSeconds = (now - state.targetLostAt) / 1000;
         if (lostSeconds >= 3) {
           if (puppy.mood !== 'bored') nextMood = 'bored';
+        } else if (puppy.mood === 'tantrum' || puppy.mood === 'run' || puppy.mood === 'excited' || puppy.mood === 'sniff') {
+          // 离开手时，如果当前是哭泣/追跑/兴奋/嗅闻这种"贴合手"的状态，
+          // 直接跳到 bored，避免先回到 sit 再切到 bored 的中间态闪烁
+          nextMood = 'bored';
         }
       } else {
         const stableD = puppy.targetDistanceAvg;
@@ -582,8 +449,17 @@
         while (da < -Math.PI) da += Math.PI * 2;
         puppy.heading += da * 0.18;
 
-        // 决定脸朝向
-        puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+        // 是否处于"近距离贴合手"的状态：sniff / excited / orbit
+        // 这些状态下小狗会绕指尖打转，朝向频繁反转看着很跳，
+        // 所以锁定 facing。tantrum 例外：哭泣时调整方向反而更有"无助/慌乱"感。
+        const isCloseInteraction =
+          puppy.mood === 'sniff' ||
+          puppy.mood === 'excited' ||
+          state.playEvent?.type === 'orbit';
+        const isTantrumState = state.playEvent?.type === 'tantrum';
+        if (!isCloseInteraction || isTantrumState) {
+          puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+        }
 
         if (state.playEvent?.type === 'orbit') {
           puppy.excitedPhase += dt * 5.2;
@@ -595,7 +471,7 @@
           puppy.vx += odx * 0.055;
           puppy.vy += ody * 0.055;
           puppy.heading = Math.atan2(ody, odx);
-          puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+          // 注意：不再强制更新 facing，由上面的 isCloseInteraction 锁定
           damp = 0.82;
           desiredSpeed = -1;
         }
@@ -623,7 +499,7 @@
           puppy.vx += odx * 0.06;
           puppy.vy += ody * 0.06;
           puppy.heading = Math.atan2(ody, odx);
-          puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+          // 注意：不再强制更新 facing，由上面的 isCloseInteraction 锁定
           damp = 0.82;
           desiredSpeed = -1; // 跳过下面的常规驱动
         }
@@ -699,20 +575,25 @@
         spawnHeart(puppy.x, puppy.y - 30);
       }
       if (puppy.mood === 'excited' && Math.random() < 0.025) {
-        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['汪!', '开心!', '贴贴!']));
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, characterBubble('excitedIdle', ['开心!']));
       } else if (puppy.mood === 'sniff' && Math.random() < 0.015) {
-        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['?', '闻闻~', '是你呀']));
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, characterBubble('closeCuriousIdle', ['?']));
       } else if (puppy.mood === 'sit' && Math.random() < 0.005) {
-        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['哼哼~', '等你哦', '来玩嘛']));
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, characterBubble('idleHappy', ['等你哦']));
       } else if (puppy.mood === 'bored' && Math.random() < 0.005) {
-        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['等你好久啦...', '主人呢?', '有点无聊啦']));
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, characterBubble('bored', ['有点无聊啦']));
       }
     }
-
     function updateRandomEvents(now, target, distance, fingerSpeed) {
       if (state.playEvent && now >= state.playEvent.until) {
+        const endingType = state.playEvent.type;
         state.playEvent = null;
         state.randomEventCooldownUntil = now + 2200 + Math.random() * 2200;
+        // 哭泣结束后，如果手已经离开很久，直接跳到 bored 态，
+        // 避免短暂回到 sit(开心哼歌) 再切 bored 的"先笑再无聊"闪烁
+        if (endingType === 'tantrum' && !state.fingerActive) {
+          state.targetLostAt = now - 3500; // 让 lostSeconds 立刻 >= 3，下帧切 bored
+        }
       }
       if (state.playEvent || now < state.randomEventCooldownUntil) return;
       if (!state.nextRandomEventAt) state.nextRandomEventAt = now + 1400 + Math.random() * 1800;
@@ -721,25 +602,43 @@
 
       if (target) {
         if (distance < 95 && Math.random() < 0.32) {
-          spawnFlowerBurst(target.x, target.y);
-          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['送你小花!', '花花给你!', '最喜欢你啦!']));
+          // 靠近触发"送花"：让小狗强制切到 excited 状态 + 选中 effect='flowerBurst' 的 variant
+          // 这样 GIF（送你花花.gif）/ 中央文案（excitedWithGift）/ 头顶气泡（flowerGift）/ 花瓣粒子
+          // 全部从同一份 variant 配置自动连动，避免文字和动画错位。
+          const switched = forceSpriteVariant('excited', (v) => v.effect === 'flowerBurst');
+          if (switched) {
+            // 把 mood 切到 excited，让渲染层选用送花 variant。
+            // 注意：直接修改 puppy.mood 而不走 nextMood 流程，因为加权随机已经被我们覆盖。
+            if (puppy.mood !== 'excited') {
+              puppy.mood = 'excited';
+              puppy.moodTimer = 0;
+            }
+            const sprite = selectedSpriteVariant('excited');
+            playVariantEffects(sprite, target);
+            // 把中央 moodTag 也刷新到送花专属文案（force=true 绕过 lastMood 拦截）
+            showMood('excited', true);
+          } else {
+            // variant 没配 effect=flowerBurst 时退回老逻辑（避免 GIF 缺失时的错位）
+            spawnFlowerBurst(target.x, target.y);
+            spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, characterBubble('flowerGift', ['送你小花!']));
+          }
           state.randomEventCooldownUntil = now + 2600;
           return;
         }
 
         if (distance < 150 && fingerSpeed < 5 && Math.random() < 0.26) {
           state.playEvent = { type: 'orbit', until: now + 1800 };
-          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['绕一圈!', '转给你看!', '开心转圈圈!']));
+          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, characterBubble('orbit', ['绕一圈!']));
           return;
         }
 
         if (distance > 150 && Math.random() < 0.22) {
-          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 183, pick(['等等我!', '别跑太快啦!', '我追我追!']));
+          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 183, characterBubble('catchUp', ['等等我!']));
           state.randomEventCooldownUntil = now + 1800;
           return;
         }
       } else if (state.targetLostAt && now - state.targetLostAt > 5200 && Math.random() < 0.28) {
-        spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['主人去哪啦?', '我在这里等你哦', '回来陪我玩嘛']));
+        spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, characterBubble('lost', ['你去哪啦?']));
         state.randomEventCooldownUntil = now + 3600;
       }
     }
@@ -765,11 +664,7 @@
       state.lastCloseInteractionAt = 0;
       state.tantrumCooldownUntil = now + 8000 + Math.random() * 4000;
       state.randomEventCooldownUntil = now + 2600;
-      spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 283, pick([
-        '我都跑过来了，你怎么又跑啦！',
-        '刚要贴贴，你又溜走啦！',
-        '不许逗完小狗就跑！',
-      ]));
+      spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 283, characterBubble('teased', ['你怎么又跑啦!']));
       showMood('tantrum');
       return true;
     }
@@ -785,35 +680,19 @@
     }
 
     function moodLabel(m) {
-      switch (m) {
-        case 'run': return '🏃 全速追指尖！';
-        case 'sniff': return '👃 嗅嗅看看';
-        case 'excited': return '✨ 开心到转圈！';
-        case 'tantrum': return '🥺 被你逗急啦';
-        case 'sit': return '🎵 开心哼歌等你';
-        case 'bored': return '🐶 等到有点无聊啦';
-        case 'lookAround': return '👀 东张西望';
-        default: return '🐶';
-      }
+      const mode = interactionModeForMood(m);
+      return characterProfile.labels?.[mode] || characterProfile.labels?.fallback || characterProfile.emoji || '🐶';
     }
 
-    function showMood(m) {
-      if (m === state.lastMood) return;
+    function showMood(m, force = false) {
+      // force=true 时强制刷新（用于 variant 切换但 mood 不变的场景，如送花特效）
+      if (!force && m === state.lastMood) return;
       state.lastMood = m;
-      const excitedSprite = m === 'excited' ? selectedSpriteVariant('excited') : null;
-      const excitedTexts = excitedSprite?.src === 'gif/送你花花.gif'
-        ? ['🌸 送你花花！']
-        : ['✨ 见到你太开心啦！', '😆 开心到冒泡泡！'];
-      const map = {
-        run: ['🏃 我来啦！', '🏃 马上追到你啦！', '🐾 等等我呀！'],
-        sniff: ['👃 靠近一点闻闻你~', '👃 是熟悉的主人味道！', '🐶 我确认一下，是你！'],
-        excited: excitedTexts,
-        tantrum: ['我都跑过来了，你怎么又跑啦！', '刚要贴贴，你又溜走啦！', '不许逗完小狗就跑！'],
-        sit: ['🎵 我先哼着歌等你来玩', '🎵 今天也想和你玩', '🐶 我乖乖在这里等你'],
-        bored: ['🐶 等你好久啦，有点无聊了', '😴 主人怎么还不来呀', '🐾 我都快等困啦'],
-        lookAround: ['👀 主人去哪儿啦？', '👀 咦，人呢？', '🐶 我找找你在哪里'],
-      };
-      const t = Array.isArray(map[m]) ? pick(map[m]) : map[m];
+      const mode = interactionModeForMood(m);
+      const selectedSprite = selectedSpriteVariant(mode);
+      const linesKey = selectedSprite?.lineKey || mode;
+      const lines = characterProfile.moodLines?.[linesKey] || characterProfile.moodLines?.[mode];
+      const t = Array.isArray(lines) ? pick(lines) : lines;
       if (!t) return;
       moodTag.textContent = t;
       moodTag.classList.add('show');
@@ -821,7 +700,7 @@
       showMood._t = setTimeout(() => moodTag.classList.remove('show'), 1400);
     }
 
-    // ====== 小狗绘制：GIF 状态动画 ======
+    // ====== 互动角色绘制：GIF 状态动画 ======
     // 下方手绘辅助函数暂时保留但不再调用，方便需要时回退。
     const COLOR = {
       bodyMain: '#f5d9a8',
@@ -838,44 +717,35 @@
       pawShadow: 'rgba(0,0,0,0.25)',
     };
 
-    const PUPPY_SPRITE_CONFIG = {
-      sit: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
-      bored: { src: 'gif/无聊.gif', size: 210, anchorY: 0.52, naturalFacing: 1 },
-      lookAround: { src: 'gif/大脸贴近.gif', size: 140, anchorY: 0.52, naturalFacing: 1 },
-      run: { src: 'gif/开心跑过来.gif', size: 195, anchorY: 0.56, naturalFacing: -1 },
-      sniff: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
-      excited: {
-        variants: [
-          { src: 'gif/开心.gif', size: 265, anchorY: 0.56, naturalFacing: 1, weight: 5 },
-          { src: 'gif/超开心.gif', size: 190, anchorY: 0.56, naturalFacing: 1, weight: 3 },
-          { src: 'gif/送你花花.gif', size: 200, anchorY: 0.56, naturalFacing: 1, weight: 2 },
-        ],
-      },
-      tantrum: { src: 'gif/哭泣.gif', size: 185, anchorY: 0.56, naturalFacing: 1 },
-      stopTantrum: { src: 'gif/停下耍无赖.gif', size: 190, anchorY: 0.56, naturalFacing: 1 },
-      fallback: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
-    };
+    const CHARACTER_SPRITE_CONFIG = characterProfile.sprites || {};
 
-    const puppySprites = Object.fromEntries(
-      Object.entries(PUPPY_SPRITE_CONFIG).map(([mood, cfg]) => {
+    const characterSprites = Object.fromEntries(
+      Object.entries(CHARACTER_SPRITE_CONFIG).map(([mode, cfg]) => {
         if (cfg.variants) {
-          return [mood, {
+          return [mode, {
             ...cfg,
             variants: cfg.variants.map((variant) => {
               const img = new Image();
               img.src = variant.src;
+              if (variant.fallbackSrc) {
+                img.onerror = () => { img.onerror = null; img.src = variant.fallbackSrc; };
+              }
               return { ...variant, img };
             }),
           }];
         }
         const img = new Image();
         img.src = cfg.src;
-        return [mood, { ...cfg, img }];
+        if (cfg.fallbackSrc) {
+          img.onerror = () => { img.onerror = null; img.src = cfg.fallbackSrc; };
+        }
+        return [mode, { ...cfg, img }];
       })
     );
 
     function chooseSpriteVariant(mood) {
-      const sprite = puppySprites[mood];
+      const mode = interactionModeForMood(mood);
+      const sprite = characterSprites[mode];
       if (!sprite?.variants) return;
       const totalWeight = sprite.variants.reduce((sum, variant) => sum + (variant.weight ?? 1), 0);
       let cursor = Math.random() * totalWeight;
@@ -883,22 +753,55 @@
         cursor -= variant.weight ?? 1;
         return cursor <= 0;
       });
-      state.spriteVariants[mood] = index >= 0 ? index : 0;
+      state.spriteVariants[mode] = index >= 0 ? index : 0;
     }
 
-    function selectedSpriteVariant(mood) {
-      const sprite = puppySprites[mood];
+    // 按条件强制选中某个 variant，而不是走加权随机。
+    // 找不到匹配项就返回 false，让调用方决定回退策略。
+    function forceSpriteVariant(mode, predicate) {
+      const sprite = characterSprites[mode];
+      if (!sprite?.variants) return false;
+      const index = sprite.variants.findIndex(predicate);
+      if (index < 0) return false;
+      state.spriteVariants[mode] = index;
+      return true;
+    }
+
+    // 播放 variant 自身声明的"附加表演"：粒子 / 头顶小气泡。
+    // 让 GIF 自己决定它有什么副作用，避免触发逻辑和 GIF 选中错位。
+    function playVariantEffects(variant, anchor) {
+      if (!variant) return;
+      if (variant.effect === 'flowerBurst') {
+        spawnFlowerBurst(anchor.x, anchor.y);
+      }
+      if (variant.bubbleKey) {
+        spawnBubble(
+          puppy.x + puppy.facing * 36,
+          puppy.y - 58,
+          characterBubble(variant.bubbleKey, ['...'])
+        );
+      }
+    }
+
+    function selectedSpriteVariant(moodOrMode) {
+      const mode = CHARACTER_SPRITE_CONFIG[moodOrMode] ? moodOrMode : interactionModeForMood(moodOrMode);
+      const sprite = characterSprites[mode];
       if (!sprite?.variants) return null;
-      const index = state.spriteVariants[mood] ?? 0;
+      const index = state.spriteVariants[mode] ?? 0;
       return sprite.variants[index] || sprite.variants[0];
     }
 
     function currentPuppySprite() {
-      if (state.playEvent?.type === 'tantrum') return puppySprites.tantrum;
-      if (state.playEvent?.type === 'stopTantrum') return puppySprites.stopTantrum;
-      const sprite = puppySprites[puppy.mood] || puppySprites.fallback;
+      if (state.playEvent?.type === 'tantrum') {
+        return characterSprites[interactionModeForMood('tantrum')] || characterSprites.fallback;
+      }
+      if (state.playEvent?.type === 'stopTantrum') {
+        return characterSprites[interactionModeForMood('stopTantrum')] || characterSprites.fallback;
+      }
+      const mode = interactionModeForMood(puppy.mood);
+      const sprite = characterSprites[mode] || characterSprites.fallback;
       if (sprite.variants) {
-        return selectedSpriteVariant(puppy.mood);
+        return selectedSpriteVariant(mode);
       }
       return sprite;
     }
@@ -1120,6 +1023,15 @@
         console.error(e);
       }
     }
+    // ====== 玩球模式：通过外部模块挂载 ======
+    const fetchMode = window.PuppyFetch.init({
+      state, puppy, mctx,
+      moodTag, moodBadge, moodText,
+      flipX, dist, lerp, clamp,
+      spawnBubble, spawnDust, spawnFlowerBurst,
+      showMood, moodLabel, chooseSpriteVariant, characterBubble,
+    });
+
     resize();
     start();
   </script>

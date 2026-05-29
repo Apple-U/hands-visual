@@ -1,0 +1,332 @@
+:root {
+  --bg: #0f0a14;
+  --fg: #fff5f0;
+  --accent: #ffb38a;
+  --accent2: #ffd6a5;
+  --muted: #b8a89a;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  overflow: hidden;
+  height: 100%;
+}
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+#wrap {
+  /* 摄像头满屏：宽高自适应 + flex 居中，让 canvas 按自身分辨率比例显示，不变形 */
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+video {
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1);
+  visibility: hidden;
+}
+canvas {
+  /* 关键：canvas 不再 100% 拉伸，而是按内部分辨率比例显示，宽高自动 fit 容器 */
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+}
+#fxCanvas { pointer-events: none; }
+#puppySprite {
+  position: absolute;
+  left: 50%;
+  top: 75%;
+  width: 13%;
+  height: auto;
+  z-index: 3;
+  pointer-events: none;
+  user-select: none;
+  image-rendering: auto;
+  --puppy-anchor-y: -55%;
+  --puppy-facing: 1;
+  transform: translate(-50%, var(--puppy-anchor-y)) scaleX(var(--puppy-facing));
+  transform-origin: 50% 55%;
+  will-change: left, top, width, transform;
+}
+
+.hud {
+  position: fixed;
+  top: 16px; left: 16px;
+  z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.badge {
+  background: rgba(20, 12, 24, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,179,138,0.18);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  display: inline-flex; align-items: center; gap: 8px;
+  width: fit-content;
+}
+.badge .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ffb84d;
+  box-shadow: 0 0 10px #ffb84d;
+}
+.badge.ok .dot { background: #ffd6a5; box-shadow: 0 0 10px #ffd6a5; }
+
+#panel {
+  position: fixed;
+  top: 16px; right: 16px;
+  z-index: 10;
+  width: 260px;
+  background: rgba(20, 12, 24, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,179,138,0.18);
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  pointer-events: auto;
+}
+#panelToggle {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-align: left;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+#panelToggle::after {
+  content: '展开';
+  float: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+}
+#panel:not(.collapsed) #panelToggle {
+  margin-bottom: 8px;
+}
+#panel:not(.collapsed) #panelToggle::after {
+  content: '收起';
+}
+#panel.collapsed #panelContent {
+  display: none;
+}
+#panel ul { margin: 0; padding-left: 18px; }
+#panel li { margin-bottom: 4px; color: #ead7c8; }
+#panel li b { color: #fff; }
+#panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+/* 玩球设置折叠卡片 */
+#fetchPanel {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 260px;
+  background: rgba(20, 12, 24, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,179,138,0.18);
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  pointer-events: auto;
+  transition: top 0.25s ease;
+}
+/* 当 #panel 展开时，#fetchPanel 自动让位往下 */
+body.panel-open #fetchPanel { top: 320px; }
+#fetchPanelToggle {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-align: left;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+#fetchPanelToggle::after {
+  content: '展开';
+  float: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
+}
+#fetchPanel:not(.collapsed) #fetchPanelToggle {
+  margin-bottom: 10px;
+}
+#fetchPanel:not(.collapsed) #fetchPanelToggle::after {
+  content: '收起';
+}
+#fetchPanel.collapsed #fetchPanelContent { display: none; }
+.fetch-mode-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin: 4px 0 10px;
+}
+.fetch-toggle-btn {
+  background: linear-gradient(135deg, rgba(255,179,138,0.25), rgba(255,214,165,0.18));
+  border: 1px solid rgba(255,179,138,0.5);
+  color: #ffe6d2;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+}
+.fetch-toggle-btn:hover { background: rgba(255,179,138,0.4); }
+.fetch-toggle-btn.on {
+  background: linear-gradient(135deg, #ffb38a, #ffd6a5);
+  color: #2a1a14;
+  font-weight: 700;
+}
+.fetch-slider-row {
+  margin: 8px 0;
+}
+.fetch-slider-row label {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: #ead7c8; margin-bottom: 2px;
+}
+.fetch-slider-row label .val {
+  color: var(--accent2); font-weight: 600;
+}
+.fetch-slider-row input[type=range] {
+  width: 100%; accent-color: var(--accent);
+  margin: 0;
+}
+.fetch-actions {
+  display: flex; gap: 8px; margin-top: 12px;
+}
+.fetch-actions button {
+  flex: 1;
+  border: 1px solid rgba(255,179,138,0.4);
+  background: rgba(20, 12, 24, 0.4);
+  color: #ffe6d2;
+  padding: 6px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.fetch-actions .save {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #2a1a14;
+  font-weight: 700;
+  border-color: transparent;
+}
+.fetch-actions button:hover { transform: translateY(-1px); }
+#fetchSaveTip {
+  font-size: 11px; color: #9bdcff; text-align: center;
+  margin-top: 6px; min-height: 14px; opacity: 0; transition: opacity 0.3s;
+}
+#fetchSaveTip.show { opacity: 1; }
+
+#moodTag {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: rgba(255, 179, 138, 0.18);
+  border: 1px solid rgba(255, 179, 138, 0.5);
+  color: #ffe6d2;
+  padding: 14px 31px;
+  border-radius: 999px;
+  font-size: 24px;
+  letter-spacing: 1.7px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+#moodTag.show { opacity: 1; }
+
+#loading {
+  position: fixed; inset: 0;
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 18px;
+  background: radial-gradient(circle at 50% 40%, #2a1f2e 0%, #0a0610 70%);
+  transition: opacity 0.5s ease;
+}
+#loading.hide { opacity: 0; pointer-events: none; }
+.loader-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 28px 36px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  min-width: 260px;
+}
+.magic-emoji {
+  font-size: 48px;
+  animation: wiggle 1.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(255,179,138,0.6));
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-8deg) scale(1); }
+  50% { transform: rotate(10deg) scale(1.06); }
+}
+.loader-title {
+  font-size: 16px; font-weight: 600; color: #fff; letter-spacing: 0.5px;
+}
+.loader-step {
+  font-size: 13px; color: var(--muted); text-align: center; min-height: 18px;
+}
+.progress-track {
+  width: 240px; height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px; overflow: hidden;
+  position: relative;
+}
+.progress-bar {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(255,179,138,0.6);
+  transition: width 0.4s ease;
+}
+.loader-tip {
+  font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;
+}
