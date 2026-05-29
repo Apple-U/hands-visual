@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🥁 Air Drums · 空气架子鼓</title>
+  <style>
+    :root {
+      --bg: #07060d;
+      --fg: #f5f5f7;
+      --accent: #ff4d8d;
+      --accent2: #4dd0ff;
+      --muted: #8a8a96;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #stage {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(circle at 20% 10%, #1a0d2a 0%, transparent 50%),
+        radial-gradient(circle at 80% 90%, #0a1c2e 0%, transparent 55%),
+        radial-gradient(circle at 50% 50%, #0e0a18 0%, #03020a 100%);
+    }
+    #wrap {
+      position: relative;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      max-width: 100vw; max-height: 100vh;
+    }
+    video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      visibility: hidden;
+    }
+    canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #fxCanvas { pointer-events: none; }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(15, 15, 25, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #4dff9a; box-shadow: 0 0 10px #4dff9a; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 10;
+      width: 280px;
+      background: rgba(15, 15, 25, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.7;
+      pointer-events: auto;
+      transition: width 0.3s ease, padding 0.3s ease, background 0.3s ease;
+    }
+    #panel.collapsed {
+      width: 44px;
+      padding: 8px;
+      background: rgba(15, 15, 25, 0.55);
+      cursor: pointer;
+    }
+    #panel.collapsed #panelBody { display: none; }
+    #panel.collapsed #panelHeader { justify-content: center; margin: 0; }
+    #panel.collapsed #panelTitle { display: none; }
+    #panel.collapsed #panelToggle { transform: rotate(180deg); }
+
+    #panelHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    #panelTitle {
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #panelToggle {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.3s ease, background 0.2s ease;
+      flex-shrink: 0;
+    }
+    #panelToggle:hover { background: rgba(255,255,255,0.18); }
+    #panel ul { margin: 0; padding-left: 18px; }
+    #panel li { margin-bottom: 4px; color: #d0d0d8; }
+    #panel li b { color: #fff; }
+    #panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+    #hitTag {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(255, 77, 141, 0.18);
+      border: 1px solid rgba(255, 77, 141, 0.5);
+      color: #ffd5e3;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      letter-spacing: 1px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #hitTag.show { opacity: 1; }
+
+    #loading {
+      position: fixed; inset: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px;
+      background: var(--bg);
+      transition: opacity 0.4s ease;
+    }
+    #loading.hide { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #startBtn {
+      position: fixed;
+      left: 50%; bottom: 80px;
+      transform: translateX(-50%);
+      z-index: 50;
+      padding: 12px 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      color: #0a0a14;
+      font-weight: 600;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 8px 30px rgba(255, 77, 141, 0.35);
+      display: none;
+    }
+    #startBtn.show { display: block; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="fxCanvas"></canvas>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">摄像头初始化中…</span></div>
+    <div class="badge" id="handsBadge"><span class="dot"></span><span id="handsText">检测到 0 只手</span></div>
+    <div class="badge" id="hitsBadge"><span class="dot"></span><span id="hitsText">击打 0 次</span></div>
+  </div>
+
+  <div id="panel" class="collapsed">
+    <div id="panelHeader">
+      <span id="panelTitle">🥁 空气架子鼓</span>
+      <button id="panelToggle" title="展开/收起">🥁</button>
+    </div>
+    <div id="panelBody">
+      <ul>
+        <li>把手放到任意 <b>鼓 pad</b> 上方</li>
+        <li>手指 <b>朝掌心快速收拢</b> 即触发击打 ✊</li>
+        <li>判定区比 pad 略大，手不用举太高～</li>
+        <li>双手可同时打不同的鼓 🙌</li>
+        <li>一字排开（左→右）：吊镲 · 踩镲 · 军鼓 · 底鼓</li>
+        <li>左手挂在踩镲打"次"，右手在军鼓/底鼓走"动打"💃</li>
+      </ul>
+      <div class="small">建议距离 0.6–1.2m，光线充足。第一次击打前请点页面任意位置激活音频～</div>
+    </div>
+  </div>
+
+  <div id="hitTag"></div>
+
+  <button id="startBtn">🔊 点我激活音频</button>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:var(--muted)">正在召唤鼓魂 🥁</div>
+  </div>
+
+  <!-- MediaPipe Hands -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <script>
+    'use strict';
+
+    // ===== DOM =====
+    const video = document.getElementById('video');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const mctx = mainCanvas.getContext('2d');
+    const fctx = fxCanvas.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    const handsText = document.getElementById('handsText');
+    const hitsText = document.getElementById('hitsText');
+    const hitTag = document.getElementById('hitTag');
+    const loading = document.getElementById('loading');
+    const startBtn = document.getElementById('startBtn');
+
+    // ===== state =====
+    const state = {
+      width: 1280,
+      height: 720,
+      hands: [],          // [{landmarks, handedness, fist, palm}]
+      // 每只手的收拢追踪：
+      //   curlPrev: 上一帧的"指尖到手掌的归一化距离"（用 0~1 之间的相对值，跟手大小无关）
+      //   curlPrevT: 上一帧的时间戳
+      //   locked: 触发后的锁定截止时间，在此之前不再触发
+      curlState: {
+        Left:  { curlPrev: null, curlPrevT: 0, lockUntil: 0 },
+        Right: { curlPrev: null, curlPrevT: 0, lockUntil: 0 },
+      },
+      lastHitTime: { Left: 0, Right: 0 },
+      // 每只手最近一段时间的位置历史，用于"触发那一帧手偏出"时回看
+      palmHistory: { Left: [], Right: [] }, // [{t, palm, tipsPx}]
+      particles: [],      // 飞溅粒子
+      ripples: [],        // 同心圆波纹
+      beams: [],          // 光柱
+      shake: 0,           // 屏幕抖动量（像素）
+      flash: 0,           // 屏幕泛光强度 0~1
+      hitCount: 0,
+    };
+
+    // 命中判定参数
+    const HIT_PARAMS = {
+      hitRadiusFactor: 1.55, // 实际命中半径 = pad 半径 × 此系数（更宽容，手轻擦过也算）
+
+      // ===== 收拢速度触发（核心思想：检测"手指朝掌心快速移动"那一下，而非"握成拳") =====
+      // 用 食指/中指 两根手指的指尖→手腕距离的"相对收缩速度"作为判定指标
+      // 单位是"每秒收缩比例"：例如 -3 表示一秒钟距离缩小到原来的 1/3 速率
+      curlSpeedThreshold: -3.0,
+      // 触发后最小冷却（同一只手）
+      minHitInterval: 100,
+      // 触发后"锁定时长"：在这段时间内即使继续在收拢也不再触发，等手张开后才能再触发
+      // 防止"一直收着"被识别成连续多次
+      hitLockMs: 180,
+
+      // 4. 位置历史回看：握拳触发时若当前位置不在任何 pad，回看最近多少 ms 内的位置
+      //    解决"挥到 pad 上方握拳，但握紧那一帧手已偏出"的问题
+      palmHistoryMs: 200,
+    };
+
+    // ===== Resize =====
+    function resize() {
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      fxCanvas.width = state.width;
+      fxCanvas.height = state.height;
+    }
+
+    // ===== 几何工具 =====
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const flipX = x => 1 - x;
+    const lmToPx = lm => ({ x: flipX(lm.x) * state.width, y: lm.y * state.height });
+
+    // ===== 鼓 pad 配置（四个，一字排开在下方）=====
+    // x/y 是相对画面比例，r 是半径比例（按宽度算）
+    // 按 "次次 + 动打" 的逻辑分组：
+    //   左半区两个高音（吊镲/踩镲），右半区两个低音（军鼓/底鼓）
+    //   y = 0.78 偏下方，手垂在桌前小幅挥动即可，不用举手
+    const PADS = [
+      { id: 'crash',  name: '吊镲', x: 0.16, y: 0.78, r: 0.10, color: '#ffd24d', hue: 48  },
+      { id: 'hihat',  name: '踩镲', x: 0.39, y: 0.78, r: 0.10, color: '#4dd0ff', hue: 195 },
+      { id: 'snare',  name: '军鼓', x: 0.62, y: 0.78, r: 0.11, color: '#ff4d8d', hue: 335 },
+      { id: 'kick',   name: '底鼓', x: 0.85, y: 0.78, r: 0.12, color: '#ff5a3c', hue: 12  },
+    ];
+
+    function padPx(p) {
+      return {
+        ...p,
+        cx: p.x * state.width,
+        cy: p.y * state.height,
+        rad: p.r * state.width,
+      };
+    }
+
+    // ===== 音频（Web Audio 合成）=====
+    let audioCtx = null;
+    let masterGain = null;
+    let audioReady = false;
+
+    function ensureAudio() {
+      if (audioCtx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.85;
+      masterGain.connect(audioCtx.destination);
+    }
+
+    function unlockAudio() {
+      ensureAudio();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      audioReady = true;
+      startBtn.classList.remove('show');
+    }
+    document.addEventListener('click', unlockAudio, { once: false });
+    document.addEventListener('touchstart', unlockAudio, { once: false });
+    startBtn.addEventListener('click', unlockAudio);
+
+    // 玩法面板：点击切换收起/展开（默认收起）
+    const panelEl = document.getElementById('panel');
+    const panelToggle = document.getElementById('panelToggle');
+    function togglePanel(e) {
+      if (e) e.stopPropagation();
+      panelEl.classList.toggle('collapsed');
+    }
+    panelToggle.addEventListener('click', togglePanel);
+    // 收起状态下，点击整个面板任意区域也能展开
+    panelEl.addEventListener('click', (e) => {
+      if (panelEl.classList.contains('collapsed')) togglePanel(e);
+    });
+
+    function envGain(t0, peak, attack, decay) {
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(peak, t0 + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+      return g;
+    }
+
+    function noiseBuffer(duration) {
+      const len = Math.floor(audioCtx.sampleRate * duration);
+      const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      return buf;
+    }
+
+    function playKick(vol = 1.0) {
+      const t = audioCtx.currentTime;
+
+      // 第 1 层：身体 body —— 主正弦下扫，提供"咚"的主体
+      // 起点 165Hz、终点 55Hz：避开了大多数笔记本/手机喇叭的低频截止
+      const body = audioCtx.createOscillator();
+      body.type = 'sine';
+      body.frequency.setValueAtTime(165, t);
+      body.frequency.exponentialRampToValueAtTime(55, t + 0.10);
+      const bodyGain = envGain(t, 1.7 * vol, 0.002, 0.42);
+      body.connect(bodyGain).connect(masterGain);
+      body.start(t); body.stop(t + 0.5);
+
+      // 第 2 层：低频 sub —— 持续 55Hz 增强厚度（耳机/有低音炮设备会更爽）
+      const sub = audioCtx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(55, t);
+      const subGain = envGain(t, 0.9 * vol, 0.005, 0.5);
+      sub.connect(subGain).connect(masterGain);
+      sub.start(t); sub.stop(t + 0.6);
+
+      // 第 3 层：敲击颗粒 click —— 真实底鼓那个"哒"的瞬间
+      // 用一段 5ms 的高频正弦 + 极短噪声混合
+      const click = audioCtx.createOscillator();
+      click.type = 'triangle';
+      click.frequency.setValueAtTime(1800, t);
+      click.frequency.exponentialRampToValueAtTime(400, t + 0.02);
+      const clickGain = envGain(t, 0.55 * vol, 0.001, 0.025);
+      click.connect(clickGain).connect(masterGain);
+      click.start(t); click.stop(t + 0.05);
+
+      // 第 4 层：噪声咔哒 —— 让 click 更脆，模拟鼓棒触面
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer(0.03);
+      const nFilter = audioCtx.createBiquadFilter();
+      nFilter.type = 'highpass';
+      nFilter.frequency.value = 2500;
+      const noiseGain = envGain(t, 0.35 * vol, 0.001, 0.025);
+      noise.connect(nFilter).connect(noiseGain).connect(masterGain);
+      noise.start(t); noise.stop(t + 0.05);
+    }
+
+    function playSnare(vol = 1.0) {
+      const t = audioCtx.currentTime;
+      // 噪声成分
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer(0.25);
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.7;
+      const ng = envGain(t, 0.7 * vol, 0.002, 0.18);
+      noise.connect(bp).connect(ng).connect(masterGain);
+      // 音调成分（让军鼓更有"嗒"）
+      const osc = audioCtx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(220, t);
+      osc.frequency.exponentialRampToValueAtTime(140, t + 0.12);
+      const og = envGain(t, 0.45 * vol, 0.002, 0.12);
+      osc.connect(og).connect(masterGain);
+      noise.start(t); noise.stop(t + 0.25);
+      osc.start(t); osc.stop(t + 0.2);
+    }
+
+    function playTom(freq, vol = 1.0) {
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.25);
+      const g = envGain(t, 0.85 * vol, 0.004, 0.32);
+      osc.connect(g).connect(masterGain);
+      osc.start(t); osc.stop(t + 0.4);
+    }
+
+    function playHat(open, vol = 1.0) {
+      const t = audioCtx.currentTime;
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer(open ? 0.5 : 0.1);
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 7000;
+      const g = envGain(t, 0.4 * vol, 0.001, open ? 0.45 : 0.07);
+      noise.connect(hp).connect(g).connect(masterGain);
+      noise.start(t); noise.stop(t + (open ? 0.55 : 0.15));
+    }
+
+    function playCrash(vol = 1.0) {
+      const t = audioCtx.currentTime;
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = noiseBuffer(1.4);
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 4000;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = 6000; bp.Q.value = 0.4;
+      const g = envGain(t, 0.55 * vol, 0.005, 1.2);
+      noise.connect(hp).connect(bp).connect(g).connect(masterGain);
+      noise.start(t); noise.stop(t + 1.4);
+    }
+
+    function playPad(id, power = 1.0) {
+      if (!audioReady) return;
+      // 力度 → 音量倍率（0.5 ~ 1.4）
+      const vol = Math.max(0.4, Math.min(1.4, 0.5 + power * 0.7));
+      switch (id) {
+        case 'kick':  return playKick(vol);
+        case 'snare': return playSnare(vol);
+        case 'tom1':  return playTom(170, vol);
+        case 'tom2':  return playTom(110, vol);
+        case 'hihat': return playHat(false, vol);
+        case 'crash': return playCrash(vol);
+      }
+    }
+
+    // ===== 手势：收拢度计算（取代旧的 isFist）=====
+    // 思路：
+    //   - 取 食指(8) 和 中指(12) 的指尖到「手腕」的距离
+    //   - 用「手长基准」= 手腕(0) → 中指根(9) 的距离 来归一化（消除手离屏幕远近的影响）
+    //   - 返回平均归一化距离：值越小越收拢，值越大越伸开
+    //   - 一帧返回单个标量，方便后续做速度（差分）
+    function curlMetric(lm) {
+      const wrist = lm[0];
+      const mcp = lm[9];
+      // 手长基准（永远 > 0；用平方距离开方避免每帧波动太大其实也行）
+      const handSpan = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y, (mcp.z || 0) - (wrist.z || 0));
+      if (handSpan < 1e-4) return 1; // 兜底
+      const indexTip = lm[8], midTip = lm[12];
+      const dIndex = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y);
+      const dMid = Math.hypot(midTip.x - wrist.x, midTip.y - wrist.y);
+      // 归一化：完全伸直时大约 ≈ 2.0，完全握拳时大约 ≈ 1.0
+      return ((dIndex + dMid) / 2) / handSpan;
+    }
+
+    // 计算"手掌中心"：手腕(0) 与 中指根(9) 的中点。
+    // 比手腕更靠上，用它做命中判定时手不用举太高就能够到上排 pad。
+    function palmCenter(lm) {
+      const a = lmToPx(lm[0]);
+      const b = lmToPx(lm[9]);
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+
+    // ===== 击打入口 =====
+    // 判定逻辑：
+    //   1) 优先看「手掌中心」是否在 pad 命中半径内（半径 = pad 视觉半径 × hitRadiusFactor）
+    //   2) 兜底：如果手掌中心未命中，但任意指尖落在命中半径内，也算
+    //   3) 多个 pad 同时满足条件时，取距离手掌中心最近的那个
+    //   4) 当前帧找不到 pad 时，回看 history（最近 N ms 内的位置）—— 解决"握拳一瞬手已偏出"
+    function findPadAt(palm, tipsPx) {
+      let bestPad = null, bestDist = Infinity, bestPos = null;
+      for (const raw of PADS) {
+        const p = padPx(raw);
+        const hitR = p.rad * HIT_PARAMS.hitRadiusFactor;
+        const dPalm = dist(palm, { x: p.cx, y: p.cy });
+        if (dPalm < hitR) {
+          if (dPalm < bestDist) {
+            bestDist = dPalm; bestPad = p; bestPos = palm;
+          }
+          continue;
+        }
+        for (const tip of tipsPx) {
+          const dT = dist(tip, { x: p.cx, y: p.cy });
+          if (dT < hitR && dT < bestDist) {
+            bestDist = dT; bestPad = p; bestPos = tip;
+          }
+        }
+      }
+      return bestPad ? { pad: bestPad, pos: bestPos } : null;
+    }
+
+    function tryHit(lm, history) {
+      const palm = palmCenter(lm);
+      const tipsPx = [4, 8, 12, 16, 20].map(i => lmToPx(lm[i]));
+
+      // 1. 当前帧
+      let found = findPadAt(palm, tipsPx);
+
+      // 2. 兜底：当前帧没命中 → 回看历史（从最近的开始）
+      if (!found && history && history.length > 0) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          const h = history[i];
+          found = findPadAt(h.palm, h.tipsPx);
+          if (found) break;
+        }
+      }
+
+      if (!found) return;
+      triggerHit(found.pad, 1.0, found.pos);
+    }
+
+    function triggerHit(pad, power = 1.0, hitPos = null) {
+      state.hitCount++;
+      hitsText.textContent = `击打 ${state.hitCount} 次`;
+      const pos = hitPos || { x: pad.cx, y: pad.cy };
+      // 音效（带力度）
+      playPad(pad.id, power);
+      // 视觉特效
+      spawnHitFx(pad, power, pos);
+      // 屏幕抖动 + 闪光（按力度缩放）
+      const baseShake = pad.id === 'kick' ? 14 : 8;
+      state.shake = Math.max(state.shake, baseShake * power);
+      const baseFlash = pad.id === 'crash' ? 0.55 : 0.35;
+      state.flash = Math.max(state.flash, baseFlash * power);
+      // tag
+      hitTag.textContent = `🥁 ${pad.name}`;
+      hitTag.classList.add('show');
+      clearTimeout(hitTag._t);
+      hitTag._t = setTimeout(() => hitTag.classList.remove('show'), 450);
+    }
+
+    // ===== 视觉特效 =====
+    function spawnHitFx(pad, power = 1.0, pos = null) {
+      const cx = pos ? pos.x : pad.cx;
+      const cy = pos ? pos.y : pad.cy;
+      // 1. 粒子飞溅（力度越大粒子越多越快）
+      const N = Math.floor(28 + 28 * power);
+      for (let i = 0; i < N; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const sp = (3 + Math.random() * 8) * (0.7 + power * 0.6);
+        state.particles.push({
+          x: cx, y: cy,
+          vx: Math.cos(ang) * sp,
+          vy: Math.sin(ang) * sp - 2 * power,
+          life: 1.0,
+          color: pad.color,
+          size: (2 + Math.random() * 3) * (0.8 + power * 0.4),
+        });
+      }
+      // 2. 同心波纹
+      for (let i = 0; i < 3; i++) {
+        state.ripples.push({
+          x: cx, y: cy,
+          r: pad.rad * 0.6,
+          maxR: pad.rad * (3.0 + i * 0.6) * (0.8 + power * 0.4),
+          life: 1.0,
+          color: pad.color,
+          delay: i * 0.06,
+        });
+      }
+      // 3. 光柱
+      state.beams.push({
+        x: cx,
+        y: pad.cy,
+        h: state.height * 0.65 * (0.7 + power * 0.5),
+        life: 1.0,
+        color: pad.color,
+        width: pad.rad * 1.2 * (0.7 + power * 0.5),
+      });
+    }
+
+    function updateFx(dt) {
+      // 粒子
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.vy += 0.35;            // 重力
+        p.vx *= 0.985; p.vy *= 0.985;
+        p.x += p.vx; p.y += p.vy;
+        p.life -= dt * 1.6;
+        if (p.life <= 0) state.particles.splice(i, 1);
+      }
+      // 波纹
+      for (let i = state.ripples.length - 1; i >= 0; i--) {
+        const r = state.ripples[i];
+        if (r.delay > 0) { r.delay -= dt; continue; }
+        r.r += (r.maxR - r.r) * 0.08;
+        r.life -= dt * 1.4;
+        if (r.life <= 0) state.ripples.splice(i, 1);
+      }
+      // 光柱
+      for (let i = state.beams.length - 1; i >= 0; i--) {
+        const b = state.beams[i];
+        b.life -= dt * 1.6;
+        if (b.life <= 0) state.beams.splice(i, 1);
+      }
+      state.shake *= 0.85;
+      state.flash *= 0.85;
+    }
+
+    // ===== 绘制 =====
+    function clear() {
+      mctx.fillStyle = 'rgba(7, 6, 13, 1)';
+      mctx.fillRect(0, 0, state.width, state.height);
+    }
+
+    function drawVideo() {
+      // 镜像绘制摄像头画面（半透明，作为舞台背景）
+      mctx.save();
+      mctx.translate(state.width, 0);
+      mctx.scale(-1, 1);
+      mctx.globalAlpha = 0.55;
+      mctx.drawImage(video, 0, 0, state.width, state.height);
+      mctx.restore();
+      // 顶层叠一层暗色让 pad 更亮
+      mctx.fillStyle = 'rgba(7, 6, 13, 0.35)';
+      mctx.fillRect(0, 0, state.width, state.height);
+    }
+
+    // 计算"每只手当前正在瞄准哪个 pad"，与 tryHit 的判定逻辑一致：
+    //   - 优先看 palm 是否落在某个 pad 命中圈内（取最近的那个）
+    //   - 兜底：palm 没命中时，看任一指尖落在某个 pad 命中圈内（取最近的那个）
+    //   - 一只手最多只点亮一个 pad，避免相邻 pad 同时被指尖蹭亮
+    function aimedPadId(h) {
+      let bestId = null, bestDist = Infinity;
+      // 1. 手掌中心优先
+      if (h.palm) {
+        for (const raw of PADS) {
+          const p = padPx(raw);
+          const hitR = p.rad * HIT_PARAMS.hitRadiusFactor;
+          const d = dist(h.palm, { x: p.cx, y: p.cy });
+          if (d < hitR && d < bestDist) {
+            bestDist = d; bestId = raw.id;
+          }
+        }
+        if (bestId) return bestId;
+      }
+      // 2. 兜底：任一指尖
+      const tipsPx = [4, 8, 12, 16, 20].map(i => lmToPx(h.landmarks[i]));
+      for (const raw of PADS) {
+        const p = padPx(raw);
+        const hitR = p.rad * HIT_PARAMS.hitRadiusFactor;
+        for (const tip of tipsPx) {
+          const d = dist(tip, { x: p.cx, y: p.cy });
+          if (d < hitR && d < bestDist) {
+            bestDist = d; bestId = raw.id;
+          }
+        }
+      }
+      return bestId;
+    }
+
+    function drawPads(timeMs) {
+      // 先算出当前每只手"瞄准的 pad id"
+      const aimedSet = new Set();
+      for (const h of state.hands) {
+        const id = aimedPadId(h);
+        if (id) aimedSet.add(id);
+      }
+
+      for (const raw of PADS) {
+        const p = padPx(raw);
+        const hitR = p.rad * HIT_PARAMS.hitRadiusFactor;
+        const hover = aimedSet.has(raw.id);
+        const breathe = 0.6 + 0.4 * Math.sin(timeMs / 600 + raw.hue);
+        const baseAlpha = hover ? 0.95 : 0.55 * breathe + 0.18;
+
+        // 外发光
+        const grad = mctx.createRadialGradient(p.cx, p.cy, p.rad * 0.2, p.cx, p.cy, p.rad * 1.7);
+        grad.addColorStop(0, hexA(raw.color, hover ? 0.55 : 0.28));
+        grad.addColorStop(1, hexA(raw.color, 0));
+        mctx.fillStyle = grad;
+        mctx.beginPath();
+        mctx.arc(p.cx, p.cy, p.rad * 1.7, 0, Math.PI * 2);
+        mctx.fill();
+
+        // pad 主体（六边形）
+        drawHexagon(mctx, p.cx, p.cy, p.rad, raw.color, baseAlpha);
+
+        // 命中范围提示圈（虚线，比 pad 大一圈，告诉玩家"手到这里都算"）
+        mctx.save();
+        mctx.setLineDash([6, 8]);
+        mctx.lineWidth = 1.5;
+        mctx.strokeStyle = hexA(raw.color, hover ? 0.55 : 0.22);
+        mctx.beginPath();
+        mctx.arc(p.cx, p.cy, hitR, 0, Math.PI * 2);
+        mctx.stroke();
+        mctx.restore();
+
+        // 文字
+        mctx.fillStyle = 'rgba(255,255,255,0.92)';
+        mctx.font = `${Math.floor(p.rad * 0.36)}px -apple-system, "PingFang SC", sans-serif`;
+        mctx.textAlign = 'center';
+        mctx.textBaseline = 'middle';
+        mctx.fillText(raw.name, p.cx, p.cy);
+      }
+    }
+
+    function drawHexagon(ctx, cx, cy, r, color, alpha) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 6 + i * Math.PI / 3;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = hexA(color, 0.12 * alpha + 0.05);
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = hexA(color, alpha);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 24 * alpha;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 把 hex 颜色转成 rgba 字符串
+    function hexA(hex, a) {
+      const n = parseInt(hex.slice(1), 16);
+      const r = (n >> 16) & 0xff, g = (n >> 8) & 0xff, b = n & 0xff;
+      return `rgba(${r},${g},${b},${a})`;
+    }
+
+    function drawHands() {
+      for (const h of state.hands) {
+        const lm = h.landmarks;
+        const wrist = lmToPx(lm[0]);
+        const palm = h.palm || palmCenter(lm);
+
+        // 描线：手腕 → 各指根
+        mctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        mctx.lineWidth = 2;
+        mctx.beginPath();
+        for (const idx of [5, 9, 13, 17]) {
+          const p = lmToPx(lm[idx]);
+          mctx.moveTo(wrist.x, wrist.y);
+          mctx.lineTo(p.x, p.y);
+        }
+        mctx.stroke();
+
+        // 关节圆点
+        for (let i = 0; i < 21; i++) {
+          const p = lmToPx(lm[i]);
+          mctx.fillStyle = h.fist ? '#ff4d8d' : '#4dd0ff';
+          mctx.beginPath();
+          mctx.arc(p.x, p.y, i === 0 ? 6 : 3.5, 0, Math.PI * 2);
+          mctx.fill();
+        }
+
+        // 🎯 手掌中心 = 命中锚点：高亮显示，告诉玩家"以这里为准"
+        const c = h.fist ? '#ff4d8d' : '#4dd0ff';
+        mctx.save();
+        mctx.shadowColor = c;
+        mctx.shadowBlur = 18;
+        mctx.strokeStyle = c;
+        mctx.lineWidth = 3;
+        mctx.beginPath();
+        mctx.arc(palm.x, palm.y, 18, 0, Math.PI * 2);
+        mctx.stroke();
+        // 中心十字
+        mctx.beginPath();
+        mctx.moveTo(palm.x - 8, palm.y); mctx.lineTo(palm.x + 8, palm.y);
+        mctx.moveTo(palm.x, palm.y - 8); mctx.lineTo(palm.x, palm.y + 8);
+        mctx.stroke();
+        mctx.restore();
+      }
+    }
+
+    function drawFx() {
+      fctx.clearRect(0, 0, state.width, state.height);
+
+      // 光柱
+      for (const b of state.beams) {
+        const grd = fctx.createLinearGradient(b.x, b.y, b.x, b.y - b.h);
+        grd.addColorStop(0, hexA(b.color, 0.55 * b.life));
+        grd.addColorStop(1, hexA(b.color, 0));
+        fctx.fillStyle = grd;
+        fctx.beginPath();
+        fctx.moveTo(b.x - b.width / 2 * b.life, b.y);
+        fctx.lineTo(b.x + b.width / 2 * b.life, b.y);
+        fctx.lineTo(b.x + b.width / 5, b.y - b.h);
+        fctx.lineTo(b.x - b.width / 5, b.y - b.h);
+        fctx.closePath();
+        fctx.fill();
+      }
+
+      // 波纹
+      for (const r of state.ripples) {
+        if (r.delay > 0) continue;
+        fctx.lineWidth = 4 * r.life;
+        fctx.strokeStyle = hexA(r.color, 0.6 * r.life);
+        fctx.beginPath();
+        fctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        fctx.stroke();
+      }
+
+      // 粒子
+      for (const p of state.particles) {
+        fctx.fillStyle = hexA(p.color, Math.max(0, p.life));
+        fctx.beginPath();
+        fctx.arc(p.x, p.y, p.size * Math.max(0.2, p.life), 0, Math.PI * 2);
+        fctx.fill();
+      }
+
+      // 屏幕泛光
+      if (state.flash > 0.02) {
+        fctx.fillStyle = `rgba(255,255,255,${state.flash * 0.18})`;
+        fctx.fillRect(0, 0, state.width, state.height);
+      }
+    }
+
+    function applyShake() {
+      const s = state.shake;
+      if (s < 0.5) {
+        mainCanvas.style.transform = '';
+        fxCanvas.style.transform = '';
+        return;
+      }
+      const dx = (Math.random() - 0.5) * s;
+      const dy = (Math.random() - 0.5) * s;
+      const tr = `translate(${dx}px, ${dy}px)`;
+      mainCanvas.style.transform = tr;
+      fxCanvas.style.transform = tr;
+    }
+
+    // ===== 主循环 =====
+    let lastT = performance.now();
+    function loop() {
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastT) / 1000);
+      lastT = now;
+
+      clear();
+      drawVideo();
+      drawPads(now);
+      drawHands();
+      updateFx(dt);
+      drawFx();
+      applyShake();
+
+      requestAnimationFrame(loop);
+    }
+
+    // ===== MediaPipe Hands 接入 =====
+    function onResults(results) {
+      const hands = [];
+      const now = performance.now();
+      if (results.multiHandLandmarks && results.multiHandedness) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const lm = results.multiHandLandmarks[i];
+          const handedness = results.multiHandedness[i].label;
+
+          // 当前帧的"收拢度"指标（数值越小越收拢）
+          const curl = curlMetric(lm);
+          const cs = state.curlState[handedness] || { curlPrev: null, curlPrevT: 0, lockUntil: 0 };
+
+          // 维护这只手的位置历史
+          const palm = palmCenter(lm);
+          const tipsPx = [4, 8, 12, 16, 20].map(i => lmToPx(lm[i]));
+          const hist = state.palmHistory[handedness];
+          hist.push({ t: now, palm, tipsPx });
+          const cutoff = now - HIT_PARAMS.palmHistoryMs;
+          while (hist.length > 0 && hist[0].t < cutoff) hist.shift();
+
+          // 计算"相对收缩速度"：单位 1/秒
+          //   negative = 在收拢，positive = 在张开
+          //   归一化 (除以 curl 自身) 让阈值与手大小无关
+          let curlVelocity = 0;
+          if (cs.curlPrev !== null && cs.curlPrevT > 0) {
+            const dt = (now - cs.curlPrevT) / 1000;
+            if (dt > 0 && dt < 0.2) {                  // dt 太大说明丢帧，不算
+              curlVelocity = (curl - cs.curlPrev) / dt / Math.max(curl, 0.5);
+            }
+          }
+          cs.curlPrev = curl;
+          cs.curlPrevT = now;
+
+          // 触发条件：收缩速度足够快（负方向超过阈值）+ 不在锁定期内
+          const lastT = state.lastHitTime[handedness] || 0;
+          const intervalOk = (now - lastT) >= HIT_PARAMS.minHitInterval;
+          const notLocked  = now >= cs.lockUntil;
+          const fast = curlVelocity <= HIT_PARAMS.curlSpeedThreshold;
+
+          let triggered = false;
+          if (fast && intervalOk && notLocked) {
+            tryHit(lm, hist);
+            state.lastHitTime[handedness] = now;
+            cs.lockUntil = now + HIT_PARAMS.hitLockMs;  // 锁定窗口，防止"持续收拢"重复触发
+            triggered = true;
+          }
+
+          // 解锁条件：当手张开（向回弹）时也清除锁，让连击更顺
+          // 当 curlVelocity 明显为正（在张开）时立刻解锁
+          if (curlVelocity > 1.5) {
+            cs.lockUntil = Math.min(cs.lockUntil, now);
+          }
+
+          state.curlState[handedness] = cs;
+
+          // 显示用：收拢度低于 1.45 当作"握拳"视觉态（仅影响圆点颜色）
+          const fistVisual = curl < 1.45;
+          hands.push({ landmarks: lm, handedness, fist: fistVisual, palm, curl, triggered });
+        }
+      }
+      // 丢失的手 → 重置状态
+      const seen = new Set(hands.map(h => h.handedness));
+      for (const k of Object.keys(state.curlState)) {
+        if (!seen.has(k)) {
+          state.curlState[k] = { curlPrev: null, curlPrevT: 0, lockUntil: 0 };
+          if (state.palmHistory[k]) state.palmHistory[k].length = 0;
+        }
+      }
+
+      state.hands = hands;
+      handsText.textContent = `检测到 ${hands.length} 只手`;
+    }
+
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720, facingMode: 'user' },
+        audio: false,
+      });
+      video.srcObject = stream;
+      await new Promise(r => video.onloadedmetadata = r);
+      await video.play();
+      state.width = video.videoWidth || 1280;
+      state.height = video.videoHeight || 720;
+      resize();
+    }
+
+    async function main() {
+      try {
+        statusText.textContent = '请求摄像头权限…';
+        await setupCamera();
+        statusText.textContent = '初始化手部识别…';
+
+        const hands = new Hands({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        });
+        hands.setOptions({
+          maxNumHands: 2,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence: 0.6,
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: state.width, height: state.height,
+        });
+        camera.start();
+
+        statusText.textContent = '准备就绪 · 张开手 → 握拳即可击鼓';
+        statusBadge.classList.add('ok');
+        loading.classList.add('hide');
+        startBtn.classList.add('show');
+        loop();
+      } catch (e) {
+        console.error(e);
+        statusText.textContent = '初始化失败：' + (e && e.message || e);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

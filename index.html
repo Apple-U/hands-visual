@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>✋ Hands Visual · 手势魔法</title>
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --fg: #f5f5f7;
+      --accent: #ff4d8d;
+      --accent2: #4dd0ff;
+      --muted: #8a8a96;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 30% 20%, #1a1a25 0%, #05050a 100%);
+    }
+    #wrap {
+      position: relative;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      max-width: 100vw;
+      max-height: 100vh;
+    }
+    video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      visibility: hidden; /* 我们用 canvas 绘制 */
+    }
+    canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #fxCanvas { pointer-events: none; }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(15, 15, 25, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #4dff9a; box-shadow: 0 0 10px #4dff9a; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 10;
+      width: 280px;
+      background: rgba(15, 15, 25, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.7;
+      pointer-events: auto;
+    }
+    #panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #panel ul { margin: 0; padding-left: 18px; }
+    #panel li { margin-bottom: 4px; color: #d0d0d8; }
+    #panel li b { color: #fff; }
+    #panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+    #gestureTag {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(255, 77, 141, 0.18);
+      border: 1px solid rgba(255, 77, 141, 0.5);
+      color: #ffd5e3;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      letter-spacing: 1px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #gestureTag.show { opacity: 1; }
+
+    #loading {
+      position: fixed; inset: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
+      background: radial-gradient(circle at 50% 40%, #1a2440 0%, #0a0a0f 70%);
+      transition: opacity 0.5s ease;
+    }
+    #loading.hide { opacity: 0; pointer-events: none; }
+    .loader-card {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      padding: 28px 36px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      min-width: 260px;
+    }
+    .magic-emoji {
+      font-size: 48px;
+      animation: wiggle 1.6s ease-in-out infinite;
+      filter: drop-shadow(0 0 10px rgba(124,92,255,0.6));
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-12deg) scale(1); }
+      50% { transform: rotate(18deg) scale(1.08); }
+    }
+    .loader-title {
+      font-size: 16px; font-weight: 600; color: #fff; letter-spacing: 0.5px;
+    }
+    .loader-step {
+      font-size: 13px; color: var(--muted); text-align: center; min-height: 18px;
+    }
+    .progress-track {
+      width: 240px; height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px; overflow: hidden;
+      position: relative;
+    }
+    .progress-bar {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px;
+      box-shadow: 0 0 12px rgba(124,92,255,0.6);
+      transition: width 0.4s ease;
+    }
+    .loader-tip {
+      font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;
+    }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="fxCanvas"></canvas>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">摄像头初始化中…</span></div>
+    <div class="badge" id="handsBadge"><span class="dot"></span><span id="handsText">检测到 0 只手</span></div>
+  </div>
+
+  <div id="panel">
+    <h3>✨ 手势玩法</h3>
+    <ul>
+      <li><b>双手 L 型</b> → 取景框：框内彩色，框外灰度 📸</li>
+      <li><b>五指张开 🖐️</b> → 掌心放烟花</li>
+      <li><b>食指拇指捏合</b> 🤏 → 空中画彩虹</li>
+      <li><b>点赞 👍</b> → 飘粉色爱心 💖</li>
+      <li><b>比耶 ✌🏻</b> → 一键清屏</li>
+    </ul>
+    <div class="small">提示：保持距离 0.5–1.5m，光线充足效果最佳～</div>
+  </div>
+
+  <div id="gestureTag"></div>
+
+  <div id="loading">
+    <div class="loader-card">
+      <div class="magic-emoji">✋</div>
+      <div class="loader-title">正在召唤魔法手</div>
+      <div class="loader-step" id="loaderStep">连接 AI 模型中…</div>
+      <div class="progress-track"><div class="progress-bar" id="loaderBar"></div></div>
+      <div class="loader-tip">首次加载需下载约 13MB 模型，耐心等几秒哦 ✨</div>
+    </div>
+  </div>
+
+  <!-- MediaPipe Hands -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <script>
+    'use strict';
+
+    // ===== DOM =====
+    const video = document.getElementById('video');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const mctx = mainCanvas.getContext('2d');
+    const fctx = fxCanvas.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    const handsText = document.getElementById('handsText');
+    const gestureTag = document.getElementById('gestureTag');
+    const loading = document.getElementById('loading');
+    const loaderStep = document.getElementById('loaderStep');
+    const loaderBar = document.getElementById('loaderBar');
+
+    function setLoader(percent, text) {
+      if (loaderBar) loaderBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+      if (text && loaderStep) loaderStep.textContent = text;
+    }
+    setLoader(8, '加载脚本中…');
+
+
+    // ===== state =====
+    const state = {
+      width: 1280,
+      height: 720,
+      hands: [],          // [{landmarks, handedness}]
+      particles: [],      // 通用粒子（烟花）
+      strokes: [],        // 绘画笔触 [{points:[{x,y}], color, life}]
+      currentStroke: null,
+      lastGesture: '',
+      gestureCooldown: {}, // 手势冷却避免重复触发
+      drawingHandId: null,
+    };
+
+    // ===== Resize =====
+    function resize() {
+      // 让 canvas 内部分辨率匹配视频实际尺寸（保持清晰）
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      fxCanvas.width = state.width;
+      fxCanvas.height = state.height;
+    }
+
+    // ===== 几何工具 =====
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const dot = (a, b) => a.x * b.x + a.y * b.y;
+
+    function normalize(v) {
+      const m = Math.hypot(v.x, v.y) || 1;
+      return { x: v.x / m, y: v.y / m };
+    }
+
+    // 翻转 x 坐标（因为我们镜像显示）
+    function flipX(x) { return 1 - x; }
+
+    function lmToPx(lm) {
+      return { x: flipX(lm.x) * state.width, y: lm.y * state.height };
+    }
+
+    // ===== 手势识别 =====
+    // 21 个关键点：0 wrist, 4 thumb_tip, 8 index_tip, 12 middle_tip, 16 ring_tip, 20 pinky_tip
+    // 关节：每根手指 mcp(根)→pip→dip→tip。简单判断「伸直」：tip 离 wrist 的距离 > pip 离 wrist 距离
+
+    function fingerStates(lm) {
+      // 返回 [thumb, index, middle, ring, pinky] 是否伸直（true/false）
+      const tips = [4, 8, 12, 16, 20];
+      const pips = [3, 6, 10, 14, 18];
+      const wrist = lm[0];
+      return tips.map((t, i) => {
+        const tipD = dist(lm[t], wrist);
+        const pipD = dist(lm[pips[i]], wrist);
+        return tipD > pipD * 1.15;
+      });
+    }
+
+    // 判断两个向量夹角（弧度）
+    function angleBetween(v1, v2) {
+      const d = v1.x * v2.x + v1.y * v2.y;
+      const m1 = Math.hypot(v1.x, v1.y);
+      const m2 = Math.hypot(v2.x, v2.y);
+      if (m1 === 0 || m2 === 0) return 0;
+      return Math.acos(Math.max(-1, Math.min(1, d / (m1 * m2))));
+    }
+
+    // 判断是否是 L 型框景手势：拇指和食指都伸直，且两者接近垂直
+    function isLShape(lm) {
+      const f = fingerStates(lm);
+      const [thumb, idx] = f;
+      if (!thumb || !idx) return false;
+      // 拇指方向：mcp(2) → tip(4)
+      const tv = { x: lm[4].x - lm[2].x, y: lm[4].y - lm[2].y };
+      // 食指方向：mcp(5) → tip(8)
+      const iv = { x: lm[8].x - lm[5].x, y: lm[8].y - lm[5].y };
+      const ang = angleBetween(tv, iv); // 弧度
+      // 40°~140° 都算「接近垂直」，比较宽容
+      return ang > Math.PI * 40 / 180 && ang < Math.PI * 140 / 180;
+    }
+
+    // 虎口拐角点（L 的直角顶点）：拇指根 + 食指根的中点
+    function corner(lm) {
+      const a = lmToPx(lm[1]);
+      const b = lmToPx(lm[5]);
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+
+    function lFrame(lm) {
+      const cor = corner(lm);
+      const thumbTip = lmToPx(lm[4]);
+      const indexTip = lmToPx(lm[8]);
+      return {
+        corner: cor,
+        thumb: normalize({ x: thumbTip.x - cor.x, y: thumbTip.y - cor.y }),
+        index: normalize({ x: indexTip.x - cor.x, y: indexTip.y - cor.y }),
+      };
+    }
+
+    function detectGesture(lm, handId) {
+      const f = fingerStates(lm);
+      const [thumb, idx, mid, ring, pinky] = f;
+      const tip4 = lm[4], tip8 = lm[8];
+      // 用食指长度（MCP→TIP）做尺度归一化，远近一致
+      const indexLen = dist(lm[5], lm[8]) || 1;
+      const pinchRatio = dist(tip4, tip8) / indexLen;
+      // 滞后阈值：未画时 0.55 才进入；正在画时小于 0.85 就保持，避免抖动断笔
+      const drawing = state.drawingHandId === handId;
+      const enter = 0.55, exit = 0.85;
+      const isPinch = drawing ? pinchRatio < exit : pinchRatio < enter;
+
+      // 点赞：拇指伸直 + 其他四指弯曲 + 拇指尖在手腕上方
+      if (thumb && !idx && !mid && !ring && !pinky && lm[4].y < lm[0].y - 0.05) return 'thumbsUp';
+      if (idx && mid && !ring && !pinky) return 'peace';       // 比耶：食指 + 中指伸直
+      if (!thumb && !idx && !mid && !ring && !pinky) return 'fist';
+      if (idx && mid && ring && pinky && thumb) return 'open'; // 五指张开
+      // 捏合画笔：阈值放宽 + 滞后
+      if (isPinch) return 'pinch';
+      if (isLShape(lm)) return 'L';                             // L 型（放宽：只看拇指+食指）
+      if (idx && !mid && !ring && !pinky) return 'point';      // 食指
+      return 'idle';
+    }
+
+    // ===== 主循环：MediaPipe 回调 =====
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5,
+    });
+    hands.onResults(onResults);
+
+    function onResults(results) {
+      if (!results.image) return;
+  
+      // 同步视频实际尺寸
+      if (results.image.width && results.image.width !== state.width) {
+        state.width = results.image.width;
+        state.height = results.image.height;
+        resize();
+      }
+
+      // 解析手
+      state.hands = [];
+      if (results.multiHandLandmarks) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          state.hands.push({
+            landmarks: results.multiHandLandmarks[i],
+            handedness: results.multiHandedness?.[i]?.label || 'Unknown',
+          });
+        }
+      }
+      handsText.textContent = `检测到 ${state.hands.length} 只手` +
+        (state.hands.length ? `（${state.hands.map(h => detectGesture(h.landmarks, h.handedness)).join(' / ')}）` : '');
+
+      // ===== 计算「取景框」 =====
+      // 两手虎口作为矩形的对角顶点；宽边贴拇指方向，高边贴食指方向。
+      let viewport = null;
+      if (state.hands.length === 2) {
+        const lmA = state.hands[0].landmarks;
+        const lmB = state.hands[1].landmarks;
+        const aL = isLShape(lmA);
+        const bL = isLShape(lmB);
+        if (aL && bL) {
+          const fA = lFrame(lmA);
+          const fB = lFrame(lmB);
+
+          // 对角手的同一条边方向通常相反，先翻正后平均，避免 180° 翻转导致框方向错乱。
+          const thumbB = dot(fA.thumb, fB.thumb) < 0 ? { x: -fB.thumb.x, y: -fB.thumb.y } : fB.thumb;
+          const indexB = dot(fA.index, fB.index) < 0 ? { x: -fB.index.x, y: -fB.index.y } : fB.index;
+
+          let ux = normalize({ x: fA.thumb.x + thumbB.x, y: fA.thumb.y + thumbB.y });
+          let uy = normalize({ x: fA.index.x + indexB.x, y: fA.index.y + indexB.y });
+          // 让高方向严格垂直于宽方向，保留“食指方向”的主趋势。
+          uy = normalize({ x: uy.x - dot(uy, ux) * ux.x, y: uy.y - dot(uy, ux) * ux.y });
+          if (dot({ x: -ux.y, y: ux.x }, uy) < 0) {
+            uy = { x: -uy.x, y: -uy.y };
+          }
+
+          // 把两虎口投影到 ux/uy 上得到对角线在矩形坐标系下的尺寸
+          const cx = (fA.corner.x + fB.corner.x) / 2;
+          const cy = (fA.corner.y + fB.corner.y) / 2;
+          const dC = { x: fB.corner.x - fA.corner.x, y: fB.corner.y - fA.corner.y };
+          const halfW = Math.abs(dot(dC, ux)) / 2;
+          const halfH = Math.abs(dot(dC, uy)) / 2;
+
+          if (halfW > 30 && halfH > 30) {
+            const angle = Math.atan2(ux.y, ux.x);
+
+            const raw = { cx, cy, halfW, halfH, angle };
+            // EMA 平滑（角度单独处理，避免跨 ±π 跳变）
+            if (!state.smoothViewport) {
+              state.smoothViewport = { ...raw };
+            } else {
+              const a = 0.4;
+              const sv = state.smoothViewport;
+              sv.cx = lerp(sv.cx, raw.cx, a);
+              sv.cy = lerp(sv.cy, raw.cy, a);
+              sv.halfW = lerp(sv.halfW, raw.halfW, a);
+              sv.halfH = lerp(sv.halfH, raw.halfH, a);
+              // 角度平滑：取最短旋转方向
+              let da = raw.angle - sv.angle;
+              while (da > Math.PI) da -= Math.PI * 2;
+              while (da < -Math.PI) da += Math.PI * 2;
+              sv.angle += da * a;
+            }
+            viewport = { ...state.smoothViewport };
+          } else {
+            state.smoothViewport = null;
+          }
+        } else {
+          state.smoothViewport = null;
+        }
+      } else {
+        state.smoothViewport = null;
+      }
+
+      // ===== 绘制主画面 =====
+      drawMainScene(results.image, viewport);
+
+      // ===== 处理手势触发 =====
+      handleGestures();
+
+      // ===== 绘制特效层 =====
+      drawFX();
+    }
+
+    function drawMainScene(image, viewport) {
+      const w = state.width, h = state.height;
+      mctx.save();
+      // 镜像
+      mctx.translate(w, 0);
+      mctx.scale(-1, 1);
+
+      if (viewport) {
+        // 框外：灰度
+        mctx.globalAlpha = 1;
+        mctx.filter = 'grayscale(1) brightness(0.7)';
+        mctx.drawImage(image, 0, 0, w, h);
+        mctx.filter = 'none';
+
+        // 框内：彩色（旋转矩形剪裁）
+        // 当前 ctx 处于镜像状态，所以中心点 x 要镜像翻转，角度要取负
+        const mvCx = w - viewport.cx;
+        const mvCy = viewport.cy;
+        const mAngle = -viewport.angle;
+        mctx.save();
+        mctx.translate(mvCx, mvCy);
+        mctx.rotate(mAngle);
+        mctx.beginPath();
+        mctx.rect(-viewport.halfW, -viewport.halfH, viewport.halfW * 2, viewport.halfH * 2);
+        mctx.clip();
+        // 把 image 画回原坐标系：先把变换抵消
+        mctx.rotate(-mAngle);
+        mctx.translate(-mvCx, -mvCy);
+        mctx.drawImage(image, 0, 0, w, h);
+        mctx.restore();
+
+        // 取景框边缘（不镜像绘制 UI）
+        mctx.restore();
+        mctx.save();
+        mctx.translate(viewport.cx, viewport.cy);
+        mctx.rotate(viewport.angle);
+        mctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        mctx.lineWidth = 3;
+        mctx.shadowColor = 'rgba(255, 77, 141, 0.8)';
+        mctx.shadowBlur = 15;
+        mctx.strokeRect(-viewport.halfW, -viewport.halfH, viewport.halfW * 2, viewport.halfH * 2);
+        // 四角装饰
+        const cs = 22;
+        mctx.lineWidth = 4;
+        mctx.shadowBlur = 0;
+        mctx.strokeStyle = '#ff4d8d';
+        const corners = [
+          [-viewport.halfW, -viewport.halfH, 1, 1],
+          [ viewport.halfW, -viewport.halfH, -1, 1],
+          [-viewport.halfW,  viewport.halfH, 1, -1],
+          [ viewport.halfW,  viewport.halfH, -1, -1],
+        ];
+        for (const [cx, cy, sx, sy] of corners) {
+          mctx.beginPath();
+          mctx.moveTo(cx + sx * cs, cy);
+          mctx.lineTo(cx, cy);
+          mctx.lineTo(cx, cy + sy * cs);
+          mctx.stroke();
+        }
+        // 标注尺寸
+        mctx.fillStyle = 'rgba(0,0,0,0.6)';
+        mctx.fillRect(-viewport.halfW, -viewport.halfH - 24, 110, 22);
+        mctx.fillStyle = '#fff';
+        mctx.font = '12px -apple-system, sans-serif';
+        mctx.fillText(`📷 ${Math.round(viewport.halfW * 2)}×${Math.round(viewport.halfH * 2)}`, -viewport.halfW + 6, -viewport.halfH - 8);
+        mctx.restore();
+      } else {
+        // 无取景框：默认全灰
+        mctx.filter = 'grayscale(1) brightness(0.7)';
+        mctx.drawImage(image, 0, 0, w, h);
+        mctx.filter = 'none';
+        mctx.restore();
+      }
+
+      // 绘制手骨架点
+      drawHandSkeleton();
+    }
+
+    function drawHandSkeleton() {
+      const connections = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20],
+        [0,17],
+      ];
+      for (const hand of state.hands) {
+        const lm = hand.landmarks;
+        const isL = isLShape(lm);
+        mctx.save();
+        mctx.strokeStyle = isL ? 'rgba(77, 255, 154, 0.95)' : 'rgba(77, 208, 255, 0.8)';
+        mctx.lineWidth = 2;
+        mctx.beginPath();
+        for (const [a, b] of connections) {
+          const pa = lmToPx(lm[a]);
+          const pb = lmToPx(lm[b]);
+          mctx.moveTo(pa.x, pa.y);
+          mctx.lineTo(pb.x, pb.y);
+        }
+        mctx.stroke();
+        // 关键点
+        for (let i = 0; i < lm.length; i++) {
+          const p = lmToPx(lm[i]);
+          mctx.fillStyle = (i === 4 || i === 8) ? '#ff4d8d' : '#4dd0ff';
+          mctx.beginPath();
+          mctx.arc(p.x, p.y, i === 4 || i === 8 ? 6 : 3, 0, Math.PI * 2);
+          mctx.fill();
+        }
+        // L 型时画虎口直角标记：从拇指尖 → 虎口拐角 → 食指尖
+        if (isL) {
+          const tThumb = lmToPx(lm[4]);
+          const tIndex = lmToPx(lm[8]);
+          const cor = corner(lm);
+          mctx.strokeStyle = '#4dff9a';
+          mctx.lineWidth = 4;
+          mctx.lineCap = 'round';
+          mctx.lineJoin = 'round';
+          mctx.shadowColor = '#4dff9a';
+          mctx.shadowBlur = 12;
+          mctx.beginPath();
+          mctx.moveTo(tThumb.x, tThumb.y);
+          mctx.lineTo(cor.x, cor.y);
+          mctx.lineTo(tIndex.x, tIndex.y);
+          mctx.stroke();
+          mctx.shadowBlur = 0;
+          // 拐角点高亮
+          mctx.fillStyle = '#fff';
+          mctx.strokeStyle = '#4dff9a';
+          mctx.lineWidth = 3;
+          mctx.beginPath();
+          mctx.arc(cor.x, cor.y, 8, 0, Math.PI * 2);
+          mctx.fill();
+          mctx.stroke();
+        }
+        mctx.restore();
+      }
+    }
+
+    // ===== 手势触发 =====
+    function canTrigger(name, ms = 800) {
+      const now = performance.now();
+      if (!state.gestureCooldown[name] || now - state.gestureCooldown[name] > ms) {
+        state.gestureCooldown[name] = now;
+        return true;
+      }
+      return false;
+    }
+
+    function showTag(text) {
+      gestureTag.textContent = text;
+      gestureTag.classList.add('show');
+      clearTimeout(showTag._t);
+      showTag._t = setTimeout(() => gestureTag.classList.remove('show'), 1200);
+    }
+
+    function handleGestures() {
+      // 单手手势
+      for (const hand of state.hands) {
+        const lm = hand.landmarks;
+        const g = detectGesture(lm, hand.handedness);
+        const tip8 = lmToPx(lm[8]);
+        const palm = lmToPx(lm[9]);
+
+        if (g === 'open' && canTrigger('firework_' + hand.handedness, 600)) {
+          spawnFirework(palm.x, palm.y);
+          showTag('🎆 烟花！');
+        }
+        if (g === 'thumbsUp' && canTrigger('thumbs_' + hand.handedness, 500)) {
+          spawnStars(lmToPx(lm[4]).x, lmToPx(lm[4]).y);
+          showTag('💖 点赞~');
+        }
+        if (g === 'peace' && canTrigger('clear_' + hand.handedness, 1000)) {
+          state.particles = [];
+          state.strokes = [];
+          showTag('✌🏻 清屏');
+        }
+
+        // 捏合画线（食指+拇指捏合时画，松开停止）
+        if (g === 'pinch') {
+          const handId = hand.handedness;
+          if (state.drawingHandId === null) state.drawingHandId = handId;
+          if (state.drawingHandId === handId) {
+            // 笔尖 = 拇指尖与食指尖的中点
+            const tip4 = lmToPx(lm[4]);
+            const nibX = (tip4.x + tip8.x) / 2;
+            const nibY = (tip4.y + tip8.y) / 2;
+            if (!state.currentStroke) {
+              state.currentStroke = {
+                points: [],
+                hue: (performance.now() / 20) % 360,
+                life: 1,
+              };
+              state.strokes.push(state.currentStroke);
+            }
+            // 采样去抖：太近的点不加入，避免原地堆出零散点
+            const pts = state.currentStroke.points;
+            const last = pts[pts.length - 1];
+            if (!last || Math.hypot(nibX - last.x, nibY - last.y) > 3.5) {
+              pts.push({ x: nibX, y: nibY });
+              if (pts.length > 400) pts.shift();
+            }
+            // 笔尖光晕标记
+            mctx.save();
+            mctx.fillStyle = `hsla(${state.currentStroke.hue}, 90%, 70%, 0.9)`;
+            mctx.shadowColor = `hsla(${state.currentStroke.hue}, 95%, 70%, 1)`;
+            mctx.shadowBlur = 18;
+            mctx.beginPath();
+            mctx.arc(nibX, nibY, 7, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.restore();
+          }
+        } else if (state.drawingHandId === hand.handedness) {
+          state.drawingHandId = null;
+          state.currentStroke = null;
+        }
+      }
+      if (state.hands.length === 0) {
+        state.drawingHandId = null;
+        state.currentStroke = null;
+      }
+    }
+
+    // ===== 粒子 =====
+    function spawnFirework(x, y) {
+      const count = 96;
+      const baseHue = Math.random() * 360;
+      for (let i = 0; i < count; i++) {
+        const a = (Math.PI * 2 * i) / count;
+        const sp = 5 + Math.random() * 8;
+        state.particles.push({
+          type: 'spark',
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          size: 5 + Math.random() * 5,
+          life: 1,
+          decay: 0.006 + Math.random() * 0.008,
+          hue: (baseHue + Math.random() * 110) % 360,
+        });
+      }
+    }
+
+    function spawnStars(x, y) {
+      // 点赞冒爱心：粉红色爱心向上飘，数量适中不密集
+      const count = 8;
+      for (let i = 0; i < count; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+        const sp = 2.5 + Math.random() * 3;
+        state.particles.push({
+          type: 'heart',
+          x: x + (Math.random() - 0.5) * 50,
+          y: y + (Math.random() - 0.5) * 12,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          size: 26 + Math.random() * 16,
+          life: 1,
+          decay: 0.006 + Math.random() * 0.005,
+          hue: 330 + Math.random() * 30, // 粉红色系
+          spin: (Math.random() - 0.5) * 0.08,
+          rot: (Math.random() - 0.5) * 0.4,
+        });
+      }
+    }
+
+    // 画一个爱心
+    function drawHeart(ctx, x, y, r, rot) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+      ctx.scale(r / 16, r / 16);
+      ctx.beginPath();
+      // 经典爱心曲线（贝塞尔）
+      ctx.moveTo(0, 6);
+      ctx.bezierCurveTo(0, 0, -10, -2, -10, -8);
+      ctx.bezierCurveTo(-10, -14, -4, -16, 0, -10);
+      ctx.bezierCurveTo(4, -16, 10, -14, 10, -8);
+      ctx.bezierCurveTo(10, -2, 0, 0, 0, 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawFX() {
+      fctx.clearRect(0, 0, state.width, state.height);
+
+      // 笔触：用二次贝塞尔串联，曲线丝带感更强
+      for (const stroke of state.strokes) {
+        const pts = stroke.points;
+        if (pts.length < 2) continue;
+        fctx.lineCap = 'round';
+        fctx.lineJoin = 'round';
+        // 分段绘制，让颜色沿路径渐变
+        for (let i = 1; i < pts.length; i++) {
+          const p0 = pts[i - 1];
+          const p1 = pts[i];
+          // 控制点：使用相邻三点的中点作为锚点，曲线连续无棱角
+          const prev = pts[i - 2] || p0;
+          const next = pts[i + 1] || p1;
+          const c0 = { x: (prev.x + p0.x) / 2, y: (prev.y + p0.y) / 2 };
+          const c1 = { x: (p1.x + next.x) / 2, y: (p1.y + next.y) / 2 };
+          fctx.strokeStyle = `hsla(${(stroke.hue + i * 4) % 360}, 90%, 65%, ${stroke.life})`;
+          fctx.lineWidth = 8 + Math.sin(i * 0.15) * 1.5;
+          fctx.shadowColor = `hsla(${(stroke.hue + i * 4) % 360}, 95%, 70%, ${stroke.life * 0.7})`;
+          fctx.shadowBlur = 8;
+          fctx.beginPath();
+          fctx.moveTo(c0.x, c0.y);
+          fctx.quadraticCurveTo(p0.x, p0.y, c1.x, c1.y);
+          fctx.stroke();
+        }
+        fctx.shadowBlur = 0;
+        stroke.life *= 0.998;
+      }
+      // 笔触衰减并裁剪过期
+      state.strokes = state.strokes.filter(s => s.life > 0.05 || s === state.currentStroke);
+
+      // 粒子
+      for (const p of state.particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.type === 'spark') p.vy += 0.06;
+        else if (p.type === 'heart') p.vy += -0.015; // 爱心轻轻向上飘
+        p.vx *= 0.99;
+        p.life -= p.decay;
+        if (p.life <= 0) continue;
+
+        if (p.type === 'spark') {
+          fctx.save();
+          fctx.fillStyle = `hsla(${p.hue}, 90%, 65%, ${p.life})`;
+          fctx.shadowColor = `hsla(${p.hue}, 95%, 70%, ${p.life})`;
+          fctx.shadowBlur = 10;
+          fctx.beginPath();
+          fctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          fctx.fill();
+          fctx.restore();
+        } else if (p.type === 'heart') {
+          p.rot += p.spin;
+          fctx.save();
+          fctx.fillStyle = `hsla(${p.hue}, 90%, 70%, ${p.life})`;
+          fctx.shadowColor = `hsla(${p.hue}, 100%, 75%, ${p.life})`;
+          fctx.shadowBlur = 22;
+          drawHeart(fctx, p.x, p.y, p.size, p.rot);
+          fctx.restore();
+        }
+      }
+      state.particles = state.particles.filter(p => p.life > 0);
+    }
+
+    // ===== 启动 =====
+    async function start() {
+      try {
+        setLoader(20, '请求摄像头权限…');
+        statusText.textContent = '请求摄像头权限…';
+        // 先拿到摄像头权限再下载模型，避免首屏黑屏
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: false,
+        });
+        video.srcObject = stream;
+            await new Promise((resolve) => {
+          if (video.readyState >= 2) resolve();
+          else video.onloadedmetadata = () => resolve();
+        });
+            setLoader(45, '下载手部识别模型（约 13MB）…');
+
+        // 主动初始化模型（hands.initialize 会下载 .tflite 资源）
+        if (typeof hands.initialize === 'function') {
+          await hands.initialize();
+        }
+        setLoader(80, '模型加载完成，启动相机循环…');
+
+        // 第一帧成功识别后再淡出 loading
+        let firstFrameDone = false;
+        const originalOnResults = hands.listeners?.()?.[0] || null;
+        const onceReady = () => {
+          if (firstFrameDone) return;
+          firstFrameDone = true;
+          setLoader(100, '准备就绪 ✨');
+          setTimeout(() => loading.classList.add('hide'), 300);
+        };
+        hands.onResults((res) => {
+          onceReady();
+          onResults(res);
+        });
+
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 1280,
+          height: 720,
+        });
+        await camera.start();
+            statusText.textContent = '运行中';
+        statusBadge.classList.add('ok');
+
+        // 兜底：3 秒后没等到第一帧也强制隐藏
+        setTimeout(onceReady, 3000);
+      } catch (e) {
+        setLoader(100, '出错啦：' + (e?.message || e));
+        if (loaderBar) loaderBar.style.background = 'linear-gradient(90deg, #ff4d6d, #ff8c42)';
+        statusText.textContent = '摄像头启动失败：' + (e?.message || e);
+        console.error(e);
+      }
+    }
+
+    resize();
+    start();
+  </script>
+</body>
+</html>

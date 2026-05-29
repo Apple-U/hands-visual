@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎸 Hand Guitar · 手势吉他</title>
+  <style>
+    :root {
+      --bg: #0a0612;
+      --fg: #f5f5f7;
+      --accent: #ffb84d;
+      --accent2: #ff4d8d;
+      --muted: #8a8a96;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 30% 20%, #1a1025 0%, #05030a 100%);
+    }
+    #wrap {
+      position: relative;
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      max-width: 100vw;
+      max-height: 100vh;
+    }
+    video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      visibility: hidden;
+    }
+    canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #fxCanvas { pointer-events: none; }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(15, 10, 25, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #4dff9a; box-shadow: 0 0 10px #4dff9a; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 10;
+      width: 290px;
+      background: rgba(15, 10, 25, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.7;
+      pointer-events: auto;
+    }
+    #panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #panel ul { margin: 0; padding-left: 18px; }
+    #panel li { margin-bottom: 4px; color: #d0d0d8; }
+    #panel li b { color: #fff; }
+    #panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+    #chordTag {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.6);
+      z-index: 10;
+      font-size: 110px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #fff;
+      text-shadow:
+        0 0 20px var(--chord-color, #ffb84d),
+        0 0 60px var(--chord-color, #ffb84d),
+        0 4px 12px rgba(0,0,0,0.6);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.4s cubic-bezier(.2,.9,.3,1.5);
+    }
+    #chordTag.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    #startBtn {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 200;
+      padding: 18px 42px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 10px 40px rgba(255,77,141,0.4);
+      transition: transform 0.2s ease, opacity 0.3s ease;
+    }
+    #startBtn:hover { transform: translate(-50%, -50%) scale(1.05); }
+    #startBtn.hide { opacity: 0; pointer-events: none; }
+
+    #loading {
+      position: fixed; inset: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px;
+      background: var(--bg);
+      transition: opacity 0.4s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #loading.show { opacity: 1; pointer-events: auto; }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 根音指示器（屏幕底部） */
+    #rootRail {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .rootKey {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      background: rgba(15,10,25,0.6);
+      border: 2px solid rgba(255,255,255,0.1);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700;
+      color: #ddd;
+      transition: all 0.2s ease;
+    }
+    .rootKey .num {
+      font-size: 10px; color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .rootKey.active {
+      transform: translateY(-6px) scale(1.1);
+      box-shadow: 0 0 24px var(--root-color, #ffb84d);
+      border-color: var(--root-color, #ffb84d);
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="fxCanvas"></canvas>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">点击开始 🎸</span></div>
+    <div class="badge" id="handsBadge"><span class="dot"></span><span id="handsText">检测到 0 只手</span></div>
+  </div>
+
+  <div id="panel">
+    <h3>🎸 手势吉他玩法</h3>
+    <ul>
+      <li><b>左手数字</b> → 选根音</li>
+      <li>1=C · 2=D · 3=E · 4=F</li>
+      <li>5=G · 6=A · 7=B</li>
+      <li><b>右手食指点转盘</b> → 选和弦类型</li>
+      <li>大三 / 小三 / 大七 / 小七 / 属七 / sus4</li>
+      <li><b>组合一变</b> → 自动弹奏 ✨</li>
+      <li><b>右手 🤏 捏合</b> → 重弹同和弦</li>
+    </ul>
+    <div class="small">提示：转盘固定在右下角，伸手过去戳一下扇区即可～</div>
+  </div>
+
+  <div id="rootRail">
+    <div class="rootKey" data-idx="0"><span class="num">1</span>C</div>
+    <div class="rootKey" data-idx="1"><span class="num">2</span>D</div>
+    <div class="rootKey" data-idx="2"><span class="num">3</span>E</div>
+    <div class="rootKey" data-idx="3"><span class="num">4</span>F</div>
+    <div class="rootKey" data-idx="4"><span class="num">5</span>G</div>
+    <div class="rootKey" data-idx="5"><span class="num">6</span>A</div>
+    <div class="rootKey" data-idx="6"><span class="num">7</span>B</div>
+  </div>
+
+  <div id="chordTag"></div>
+
+  <button id="startBtn">🎸 点击开始演奏</button>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:var(--muted)">正在加载吉他音色 🎵</div>
+  </div>
+
+  <!-- MediaPipe Hands -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <!-- Tone.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tone@14.8.49/build/Tone.js"></script>
+
+  <script>
+    'use strict';
+
+    // ===== DOM =====
+    const video = document.getElementById('video');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const mctx = mainCanvas.getContext('2d');
+    const fctx = fxCanvas.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    const handsText = document.getElementById('handsText');
+    const chordTag = document.getElementById('chordTag');
+    const startBtn = document.getElementById('startBtn');
+    const loading = document.getElementById('loading');
+    const rootKeys = document.querySelectorAll('.rootKey');
+
+    // ===== 音乐定义 =====
+    // 根音（数字 1-7 对应自然大调 C D E F G A B），MIDI 数（C3 = 48）
+    const ROOTS = [
+      { num: 1, name: 'C', midi: 48, color: '#ff5e5e' },
+      { num: 2, name: 'D', midi: 50, color: '#ff9d4d' },
+      { num: 3, name: 'E', midi: 52, color: '#ffd24d' },
+      { num: 4, name: 'F', midi: 53, color: '#7dff5e' },
+      { num: 5, name: 'G', midi: 55, color: '#4ddfff' },
+      { num: 6, name: 'A', midi: 57, color: '#7d8aff' },
+      { num: 7, name: 'B', midi: 59, color: '#d97dff' },
+    ];
+
+    // 和弦类型 - 6 种，按转盘顺时针排列（0=右，1=右下，2=左下，3=左，4=左上，5=右上）
+    // intervals 是相对根音的半音数
+    const CHORD_TYPES = [
+      { id: 'maj',  label: '大三',  suffix: '',     intervals: [0, 4, 7, 12, 16],     color: '#ff7eb8' },
+      { id: 'm',    label: '小三',  suffix: 'm',    intervals: [0, 3, 7, 12, 15],     color: '#ff9d4d' },
+      { id: 'maj7', label: '大七',  suffix: 'maj7', intervals: [0, 4, 7, 11, 14],     color: '#ffd24d' },
+      { id: 'm7',   label: '小七',  suffix: 'm7',   intervals: [0, 3, 7, 10, 14],     color: '#7dff5e' },
+      { id: '7',    label: '属七',  suffix: '7',    intervals: [0, 4, 7, 10, 14],     color: '#4ddfff' },
+      { id: 'sus4', label: 'sus4', suffix: 'sus4',  intervals: [0, 5, 7, 12, 17],     color: '#d97dff' },
+    ];
+    // 默认右手没识别时使用大三
+    const DEFAULT_TYPE_IDX = 0;
+
+    const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    function midiToNote(midi) {
+      const oct = Math.floor(midi / 12) - 1;
+      return NOTE_NAMES[midi % 12] + oct;
+    }
+
+    // ===== state =====
+    const state = {
+      width: 1280,
+      height: 720,
+      hands: [],
+      currentRoot: null,        // ROOTS 索引（0-6）或 null
+      currentTypeIdx: DEFAULT_TYPE_IDX, // CHORD_TYPES 索引
+      lastPlayed: { root: null, type: null },
+      lastPlayTime: 0,
+      // 根音稳定计数（连续 N 帧一致才生效）
+      _rootCandidate: null,
+      _rootFrames: 0,
+      // 类型稳定计数
+      _typeCandidate: DEFAULT_TYPE_IDX,
+      _typeFrames: 0,
+      // 右手捏合检测
+      _pinchPrev: false,
+      // 固定转盘几何（屏幕坐标）
+      dial: { cx: 0, cy: 0, r: 160 },
+      // 当前右手食指尖在转盘上的悬停信息（用于绘制高亮）
+      dialHover: null,
+      // 视觉
+      notes: [],
+      chordHalo: null,
+      audioReady: false,
+    };
+
+    // ===== Resize =====
+    function resize() {
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      fxCanvas.width = state.width;
+      fxCanvas.height = state.height;
+      updateDialGeometry();
+    }
+
+    // ===== 几何工具 =====
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const flipX = (x) => 1 - x;
+    const lmToPx = (lm) => ({ x: flipX(lm.x) * state.width, y: lm.y * state.height });
+
+    // ===== 手指伸直判定 =====
+    function fingerStates(lm) {
+      const wrist = lm[0];
+      const palmRef = dist(lm[5], lm[9]);
+      const thumbToIndexBase = dist(lm[4], lm[5]);
+      const thumbStraight = thumbToIndexBase > palmRef * 1.55;
+      const tips = [8, 12, 16, 20];
+      const pips = [6, 10, 14, 18];
+      const others = tips.map((t, i) => {
+        return dist(lm[t], wrist) > dist(lm[pips[i]], wrist) * 1.15;
+      });
+      return [thumbStraight, ...others];
+    }
+
+    // ===== 根音识别（左手数字 1-7） =====
+    function detectRootIdx(lm) {
+      const [thumb, idx, mid, ring, pinky] = fingerStates(lm);
+      const pinch = dist(lm[4], lm[8]);
+
+      const palmRef = dist(lm[5], lm[17]);
+      const thumbSpread = dist(lm[4], lm[17]) / (palmRef || 1);
+      const thumbReallyOut = thumbSpread > 1.05;
+
+      // 7 - OK 手势：拇指食指捏圈，其余三指伸开
+      if (pinch < 0.06 && mid && ring && pinky) return 6;
+      // 6 - 拇指 + 小指
+      if (thumb && !idx && !mid && !ring && pinky) return 5;
+      // 4 vs 5
+      if (idx && mid && ring && pinky) {
+        if (thumb && thumbReallyOut) return 4; // 5 → G
+        return 3; // 4 → F
+      }
+      // 3 - 食指中指无名指
+      if (idx && mid && ring && !pinky) return 2;
+      // 2 - 食指中指
+      if (idx && mid && !ring && !pinky) return 1;
+      // 1 - 只食指
+      if (idx && !mid && !ring && !pinky) return 0;
+
+      return null;
+    }
+
+    // ===== 固定转盘：根据屏幕尺寸更新位置（右下角） =====
+    function updateDialGeometry() {
+      const w = state.width, h = state.height;
+      // 转盘半径：屏幕短边的 14%
+      state.dial.r = Math.max(110, Math.min(w, h) * 0.18);
+      // 中心放在右下角内边距处
+      const margin = state.dial.r + 40;
+      state.dial.cx = w - margin;
+      state.dial.cy = h - margin;
+    }
+
+    // ===== 右手转盘：用食指尖落在哪个扇区决定和弦类型 =====
+    function detectTypeIdx(lm) {
+      const tip = lmToPx(lm[8]);
+      const dx = tip.x - state.dial.cx;
+      const dy = tip.y - state.dial.cy;
+      const r = Math.hypot(dx, dy);
+      // 食指尖必须落在转盘附近：内圈以外、外圈以内一定范围
+      const minR = state.dial.r * 0.18;
+      const maxR = state.dial.r * 1.35;
+      if (r < minR || r > maxR) return null;
+      let angle = Math.atan2(dy, dx);
+      let a = (angle + Math.PI * 2) % (Math.PI * 2);
+      // 旋转 30°，让"正右"位于第 0 扇区中心
+      a = (a + Math.PI / 6) % (Math.PI * 2);
+      const sector = Math.floor(a / (Math.PI / 3));
+      return Math.max(0, Math.min(5, sector));
+    }
+
+    // ===== 右手捏合检测 =====
+    function isPinching(lm) {
+      const pinch = dist(lm[4], lm[8]);
+      return pinch < 0.05;
+    }
+
+    // ===== 音频 =====
+    let synth = null;
+    let reverb = null;
+
+    async function initAudio() {
+      await Tone.start();
+      reverb = new Tone.Reverb({ decay: 1.8, wet: 0.25 }).toDestination();
+      synth = new Tone.PolySynth(Tone.FMSynth, {
+        harmonicity: 3.2,
+        modulationIndex: 7,
+        envelope: { attack: 0.005, decay: 0.6, sustain: 0.15, release: 1.5 },
+        modulationEnvelope: { attack: 0.01, decay: 0.4, sustain: 0, release: 0.5 },
+        oscillator: { type: 'triangle' },
+        modulation: { type: 'square' },
+      }).connect(reverb);
+      synth.volume.value = -8;
+      state.audioReady = true;
+    }
+
+    function buildChord(rootIdx, typeIdx) {
+      const root = ROOTS[rootIdx];
+      const type = CHORD_TYPES[typeIdx];
+      const notes = type.intervals.map(iv => midiToNote(root.midi + iv));
+      const label = root.name + type.suffix;
+      // 颜色用根音色 + 类型色混合：取根音色为主调
+      const color = root.color;
+      return { notes, label, color, type, root };
+    }
+
+    // 弹奏一个和弦：从低到高微延迟拨出（自然根音和弦感）
+    function playChord(rootIdx, typeIdx, velocity = 0.85) {
+      if (!state.audioReady || !synth) return;
+      const chord = buildChord(rootIdx, typeIdx);
+      const now = Tone.now();
+      const stagger = 0.022;
+      chord.notes.forEach((n, i) => {
+        synth.triggerAttackRelease(n, '2n', now + i * stagger, velocity * (0.75 + Math.random() * 0.25));
+      });
+
+      spawnNoteParticles(chord);
+      state.chordHalo = {
+        life: 1, color: chord.color, label: chord.label,
+        cx: state.width / 2, cy: state.height / 2,
+      };
+
+      chordTag.textContent = chord.label;
+      chordTag.style.setProperty('--chord-color', chord.color);
+      chordTag.classList.add('show');
+      clearTimeout(playChord._t);
+      playChord._t = setTimeout(() => chordTag.classList.remove('show'), 900);
+
+      state.lastPlayed = { root: rootIdx, type: typeIdx };
+      state.lastPlayTime = performance.now();
+    }
+
+    function spawnNoteParticles(chord) {
+      const symbols = ['♪', '♫', '♩', '♬'];
+      const n = 16;
+      for (let i = 0; i < n; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+        const sp = 4 + Math.random() * 5;
+        state.notes.push({
+          x: state.width / 2 + (Math.random() - 0.5) * 220,
+          y: state.height / 2 + (Math.random() - 0.5) * 100,
+          vx: Math.cos(angle) * sp + (Math.random() - 0.5) * 4,
+          vy: Math.sin(angle) * sp - 2,
+          symbol: symbols[Math.floor(Math.random() * symbols.length)],
+          color: chord.color,
+          life: 1,
+          decay: 0.012 + Math.random() * 0.008,
+          size: 22 + Math.random() * 18,
+          rot: (Math.random() - 0.5) * 0.4,
+          rotSpeed: (Math.random() - 0.5) * 0.08,
+        });
+      }
+    }
+
+    // ===== MediaPipe =====
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.5,
+    });
+    hands.onResults(onResults);
+
+    function onResults(results) {
+      if (!results.image) return;
+      if (results.image.width && results.image.width !== state.width) {
+        state.width = results.image.width;
+        state.height = results.image.height;
+        resize();
+      }
+
+      state.hands = [];
+      if (results.multiHandLandmarks) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          state.hands.push({
+            landmarks: results.multiHandLandmarks[i],
+            handedness: results.multiHandedness?.[i]?.label || 'Unknown',
+          });
+        }
+      }
+
+      // 镜像后："Right" 标签是用户的左手，"Left" 标签是用户的右手
+      let leftHand = null;   // 用户左手 → 选根音
+      let rightHand = null;  // 用户右手 → 选和弦类型 / 捏合重弹
+      for (const h of state.hands) {
+        if (h.handedness === 'Right') leftHand = h;
+        else if (h.handedness === 'Left') rightHand = h;
+      }
+      // 单手降级：那只手既选根音也选类型
+      if (state.hands.length === 1) {
+        leftHand = state.hands[0];
+        rightHand = state.hands[0];
+      }
+
+      // 1) 识别根音（连续 2 帧一致才更新）
+      let rootIdx = leftHand ? detectRootIdx(leftHand.landmarks) : null;
+      if (rootIdx !== null) {
+        if (state._rootCandidate === rootIdx) {
+          state._rootFrames++;
+          if (state._rootFrames >= 2) state.currentRoot = rootIdx;
+        } else {
+          state._rootCandidate = rootIdx;
+          state._rootFrames = 1;
+        }
+      } else {
+        state._rootCandidate = null;
+        state._rootFrames = 0;
+      }
+
+      // 2) 识别和弦类型（右手食指尖落入转盘扇区，连续 2 帧一致）
+      let typeIdx = null;
+      if (rightHand) {
+        typeIdx = detectTypeIdx(rightHand.landmarks);
+      }
+      if (typeIdx !== null) {
+        if (state._typeCandidate === typeIdx) {
+          state._typeFrames++;
+          if (state._typeFrames >= 2) state.currentTypeIdx = typeIdx;
+        } else {
+          state._typeCandidate = typeIdx;
+          state._typeFrames = 1;
+        }
+      }
+
+      // 3) 触发逻辑：组合变化时弹奏（带冷却）
+      const cooldown = 250; // ms
+      if (state.currentRoot !== null) {
+        const sameAsLast = state.lastPlayed.root === state.currentRoot &&
+                           state.lastPlayed.type === state.currentTypeIdx;
+        const now = performance.now();
+        if (!sameAsLast && now - state.lastPlayTime > cooldown) {
+          playChord(state.currentRoot, state.currentTypeIdx);
+        }
+      }
+
+      // 4) 右手捏合 → 主动重弹同一和弦
+      if (rightHand && rightHand !== leftHand) {
+        const pinching = isPinching(rightHand.landmarks);
+        if (pinching && !state._pinchPrev && state.currentRoot !== null) {
+          // 强制重弹（重置 lastPlayed 让触发逻辑下一帧重新弹奏）
+          playChord(state.currentRoot, state.currentTypeIdx);
+        }
+        state._pinchPrev = pinching;
+      } else {
+        state._pinchPrev = false;
+      }
+
+      updateRootRail();
+
+      const rootName = state.currentRoot !== null ? ROOTS[state.currentRoot].name : '?';
+      const typeLabel = CHORD_TYPES[state.currentTypeIdx].label;
+      handsText.textContent = `检测到 ${state.hands.length} 只手` +
+        (state.currentRoot !== null ? ` · ${rootName} ${typeLabel}` : '');
+
+      drawScene(results.image, rightHand, leftHand);
+      drawFX();
+    }
+
+    function updateRootRail() {
+      rootKeys.forEach((el) => {
+        const idx = parseInt(el.dataset.idx);
+        if (idx === state.currentRoot) {
+          el.classList.add('active');
+          el.style.setProperty('--root-color', ROOTS[idx].color);
+        } else {
+          el.classList.remove('active');
+        }
+      });
+    }
+
+    // ===== 绘制主画面 =====
+    function drawScene(image, rightHand, leftHand) {
+      const w = state.width, h = state.height;
+      mctx.save();
+      mctx.translate(w, 0);
+      mctx.scale(-1, 1);
+      mctx.filter = 'brightness(0.55) contrast(1.1) saturate(1.1)';
+      mctx.drawImage(image, 0, 0, w, h);
+      mctx.filter = 'none';
+      mctx.restore();
+
+      drawHandSkeleton(leftHand, rightHand);
+      // 固定转盘始终绘制
+      const indexTipPx = rightHand ? lmToPx(rightHand.landmarks[8]) : null;
+      drawDial(indexTipPx);
+    }
+
+    function drawHandSkeleton(leftHand, rightHand) {
+      const connections = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20],
+        [0,17],
+      ];
+      for (const hand of state.hands) {
+        const lm = hand.landmarks;
+        const isRoot = hand === leftHand;
+        const color = isRoot
+          ? (state.currentRoot !== null ? ROOTS[state.currentRoot].color : '#ffb84d')
+          : CHORD_TYPES[state.currentTypeIdx].color;
+
+        mctx.save();
+        mctx.strokeStyle = color;
+        mctx.globalAlpha = 0.85;
+        mctx.lineWidth = 2.5;
+        mctx.beginPath();
+        for (const [a, b] of connections) {
+          const pa = lmToPx(lm[a]);
+          const pb = lmToPx(lm[b]);
+          mctx.moveTo(pa.x, pa.y);
+          mctx.lineTo(pb.x, pb.y);
+        }
+        mctx.stroke();
+
+        for (let i = 0; i < lm.length; i++) {
+          const p = lmToPx(lm[i]);
+          mctx.fillStyle = color;
+          mctx.shadowColor = color;
+          mctx.shadowBlur = (i === 4 || i === 8) ? 14 : 6;
+          mctx.beginPath();
+          mctx.arc(p.x, p.y, i === 4 || i === 8 ? 6 : 3, 0, Math.PI * 2);
+          mctx.fill();
+        }
+        mctx.shadowBlur = 0;
+
+        // 在根音手手腕上方显示根音
+        if (isRoot && state.currentRoot !== null) {
+          const wrist = lmToPx(lm[0]);
+          mctx.fillStyle = 'rgba(0,0,0,0.55)';
+          mctx.fillRect(wrist.x - 32, wrist.y + 14, 64, 28);
+          mctx.fillStyle = '#fff';
+          mctx.font = 'bold 18px -apple-system, sans-serif';
+          mctx.textAlign = 'center';
+          mctx.fillText(ROOTS[state.currentRoot].name, wrist.x, wrist.y + 33);
+          mctx.textAlign = 'start';
+        }
+        mctx.restore();
+      }
+    }
+
+    // ===== 固定转盘：屏幕右下角，6 扇区 =====
+    function drawDial(indexTipPx) {
+      const cx = state.dial.cx;
+      const cy = state.dial.cy;
+      const r = state.dial.r;
+      const activeIdx = state.currentTypeIdx;
+
+      // 计算食指尖在转盘上的悬停扇区（仅用于高亮预览）
+      let hoverIdx = null;
+      let tipDist = Infinity;
+      if (indexTipPx) {
+        const dx = indexTipPx.x - cx;
+        const dy = indexTipPx.y - cy;
+        tipDist = Math.hypot(dx, dy);
+        if (tipDist <= r * 1.35 && tipDist >= r * 0.18) {
+          let a = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI * 2);
+          a = (a + Math.PI / 6) % (Math.PI * 2);
+          hoverIdx = Math.floor(a / (Math.PI / 3));
+        }
+      }
+
+      mctx.save();
+      mctx.translate(cx, cy);
+
+      // 底盘背景圆（半透明）
+      mctx.fillStyle = 'rgba(15, 10, 25, 0.55)';
+      mctx.beginPath();
+      mctx.arc(0, 0, r * 1.05, 0, Math.PI * 2);
+      mctx.fill();
+
+      // 外环
+      mctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      mctx.lineWidth = 1.5;
+      mctx.beginPath();
+      mctx.arc(0, 0, r, 0, Math.PI * 2);
+      mctx.stroke();
+
+      // 6 扇区
+      for (let i = 0; i < 6; i++) {
+        const a0 = i * Math.PI / 3 - Math.PI / 6;
+        const a1 = a0 + Math.PI / 3;
+        const ct = CHORD_TYPES[i];
+        const isActive = i === activeIdx;
+        const isHover = i === hoverIdx;
+
+        // 扇形填充
+        mctx.beginPath();
+        mctx.moveTo(0, 0);
+        mctx.arc(0, 0, r, a0, a1);
+        mctx.closePath();
+
+        if (isActive) {
+          mctx.fillStyle = ct.color + '66';
+          mctx.fill();
+          mctx.strokeStyle = ct.color;
+          mctx.lineWidth = 2.5;
+          mctx.shadowColor = ct.color;
+          mctx.shadowBlur = 18;
+          mctx.stroke();
+          mctx.shadowBlur = 0;
+        } else if (isHover) {
+          mctx.fillStyle = ct.color + '33';
+          mctx.fill();
+          mctx.strokeStyle = ct.color + 'aa';
+          mctx.lineWidth = 1.5;
+          mctx.stroke();
+        } else {
+          mctx.fillStyle = 'rgba(20,15,30,0.4)';
+          mctx.fill();
+          mctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          mctx.lineWidth = 1;
+          mctx.stroke();
+        }
+
+        // 标签
+        const am = (a0 + a1) / 2;
+        const tx = Math.cos(am) * r * 0.7;
+        const ty = Math.sin(am) * r * 0.7;
+        mctx.fillStyle = isActive ? '#fff' : (isHover ? '#fff' : 'rgba(255,255,255,0.7)');
+        const fs = isActive ? 18 : (isHover ? 16 : 13);
+        mctx.font = `${isActive ? 'bold ' : ''}${fs}px -apple-system, sans-serif`;
+        mctx.textAlign = 'center';
+        mctx.textBaseline = 'middle';
+        if (isActive) {
+          mctx.shadowColor = ct.color;
+          mctx.shadowBlur = 12;
+        }
+        mctx.fillText(ct.label, tx, ty);
+        mctx.shadowBlur = 0;
+      }
+
+      // 中心圆 + 当前和弦名小标
+      mctx.fillStyle = 'rgba(15, 10, 25, 0.85)';
+      mctx.beginPath();
+      mctx.arc(0, 0, r * 0.18, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.strokeStyle = CHORD_TYPES[activeIdx].color;
+      mctx.lineWidth = 2;
+      mctx.stroke();
+
+      // 中心显示当前根音和弦类型简写
+      const rootName = state.currentRoot !== null ? ROOTS[state.currentRoot].name : '?';
+      const suf = CHORD_TYPES[activeIdx].suffix;
+      mctx.fillStyle = '#fff';
+      mctx.font = 'bold 16px -apple-system, sans-serif';
+      mctx.textAlign = 'center';
+      mctx.textBaseline = 'middle';
+      mctx.fillText(rootName + suf, 0, 0);
+
+      mctx.restore();
+
+      // 食指尖落在转盘上时画一个跟随光标
+      if (indexTipPx && tipDist <= r * 1.35) {
+        mctx.save();
+        const hoverColor = hoverIdx !== null ? CHORD_TYPES[hoverIdx].color : '#ffffff';
+        mctx.fillStyle = hoverColor;
+        mctx.shadowColor = hoverColor;
+        mctx.shadowBlur = 18;
+        mctx.beginPath();
+        mctx.arc(indexTipPx.x, indexTipPx.y, 9, 0, Math.PI * 2);
+        mctx.fill();
+        mctx.restore();
+      }
+
+      mctx.textAlign = 'start';
+      mctx.textBaseline = 'alphabetic';
+    }
+
+    // ===== 特效层 =====
+    function drawFX() {
+      fctx.clearRect(0, 0, state.width, state.height);
+
+      if (state.chordHalo) {
+        const ha = state.chordHalo;
+        const r = (1 - ha.life) * 320 + 40;
+        fctx.save();
+        fctx.globalAlpha = ha.life * 0.5;
+        const grad = fctx.createRadialGradient(ha.cx, ha.cy, r * 0.3, ha.cx, ha.cy, r);
+        grad.addColorStop(0, ha.color + '00');
+        grad.addColorStop(0.7, ha.color + 'aa');
+        grad.addColorStop(1, ha.color + '00');
+        fctx.fillStyle = grad;
+        fctx.beginPath();
+        fctx.arc(ha.cx, ha.cy, r, 0, Math.PI * 2);
+        fctx.fill();
+        fctx.restore();
+        ha.life -= 0.025;
+        if (ha.life <= 0) state.chordHalo = null;
+      }
+
+      for (const p of state.notes) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.08;
+        p.vx *= 0.99;
+        p.life -= p.decay;
+        p.rot += p.rotSpeed;
+        if (p.life <= 0) continue;
+
+        fctx.save();
+        fctx.translate(p.x, p.y);
+        fctx.rotate(p.rot);
+        fctx.fillStyle = p.color;
+        fctx.globalAlpha = p.life;
+        fctx.shadowColor = p.color;
+        fctx.shadowBlur = 14;
+        fctx.font = `bold ${p.size}px serif`;
+        fctx.textAlign = 'center';
+        fctx.textBaseline = 'middle';
+        fctx.fillText(p.symbol, 0, 0);
+        fctx.restore();
+      }
+      state.notes = state.notes.filter(p => p.life > 0);
+    }
+
+    // ===== 启动 =====
+    async function start() {
+      try {
+        startBtn.classList.add('hide');
+        loading.classList.add('show');
+        statusText.textContent = '加载音色…';
+        await initAudio();
+        statusText.textContent = '请求摄像头权限…';
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 1280,
+          height: 720,
+        });
+        await camera.start();
+        statusText.textContent = '运行中 🎸';
+        statusBadge.classList.add('ok');
+        loading.classList.remove('show');
+      } catch (e) {
+        statusText.textContent = '启动失败：' + (e?.message || e);
+        loading.classList.remove('show');
+        console.error(e);
+      }
+    }
+
+    startBtn.addEventListener('click', start);
+    resize();
+  </script>
+</body>
+</html>

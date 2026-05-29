@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⛰️ Sound Mountains · 声波山脉 (Three.js)</title>
+  <style>
+    :root {
+      --bg: #02050d;
+      --fg: #f5f5f7;
+      --accent: #4dd0ff;
+      --accent2: #ffd66b;
+      --accent3: #7df0d4;
+      --muted: #8a8a96;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #three-canvas {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100vh;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(10, 16, 28, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #4dd0ff; box-shadow: 0 0 12px #4dd0ff; }
+    .badge.beat .dot { background: #ffd66b; box-shadow: 0 0 16px #ffd66b; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 11;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    }
+    #toggleBtn {
+      pointer-events: auto;
+      cursor: pointer;
+      background: rgba(8, 20, 36, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(77, 208, 255, 0.3);
+      color: var(--fg);
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 24px rgba(77, 208, 255, 0.15);
+    }
+    #toggleBtn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 32px rgba(77, 208, 255, 0.3);
+      border-color: rgba(77, 208, 255, 0.6);
+    }
+    #panelBody {
+      pointer-events: auto;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(.4,.2,.2,1), opacity 0.3s ease;
+      opacity: 0;
+      background: rgba(8, 14, 26, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.08);
+      width: 320px;
+    }
+    #panelBody.open {
+      max-height: 600px;
+      opacity: 1;
+      padding: 16px 18px;
+    }
+    #panelBody h3 {
+      margin: 4px 0 10px;
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+    }
+    #panelBody ol {
+      padding-left: 20px;
+      margin: 6px 0;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #d4d4dc;
+    }
+    #panelBody li b { color: var(--accent2); font-weight: 600; }
+    #panelBody .row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0;
+      border-top: 1px dashed rgba(255,255,255,0.07);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #panelBody .row span.val { color: #fff; font-variant-numeric: tabular-nums; }
+
+    #startMask {
+      position: fixed; inset: 0;
+      background: rgba(2, 5, 13, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 999;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+    }
+    #startMask.hide { opacity: 0; pointer-events: none; }
+    .startCard {
+      max-width: 480px;
+      padding: 36px 40px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(20,40,80,0.45), rgba(60,80,40,0.25));
+      border: 1px solid rgba(77, 208, 255, 0.25);
+      text-align: center;
+      box-shadow: 0 20px 80px rgba(77, 208, 255, 0.2);
+      pointer-events: auto;
+    }
+    .startCard h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      background: linear-gradient(90deg, #4dd0ff, #7df0d4, #ffd66b);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: 1px;
+    }
+    .startCard p {
+      margin: 8px 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #c8c8d4;
+    }
+    .startCard .tip {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+    #startBtn {
+      margin-top: 18px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #4dd0ff, #7df0d4);
+      color: #02050d;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      box-shadow: 0 8px 32px rgba(77, 208, 255, 0.45);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    #startBtn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(77, 208, 255, 0.65);
+    }
+
+    #toast {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(8, 14, 26, 0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(77, 208, 255, 0.3);
+      padding: 10px 20px;
+      border-radius: 999px;
+      font-size: 13px;
+      opacity: 0;
+      transition: all 0.35s ease;
+      pointer-events: none;
+      z-index: 50;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .lil-gui {
+      --width: 280px;
+      --background-color: rgba(8, 14, 26, 0.85);
+      --text-color: #e8e8ee;
+      --title-background-color: rgba(77, 208, 255, 0.18);
+      --title-text-color: #ffffff;
+      --widget-color: rgba(77, 208, 255, 0.18);
+      --hover-color: rgba(77, 208, 255, 0.32);
+      --focus-color: rgba(77, 208, 255, 0.45);
+      --number-color: #ffd66b;
+      --string-color: #7df0d4;
+      --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(77, 208, 255, 0.25);
+      border-radius: 12px;
+      top: 80px !important;
+    }
+    .lil-gui.root > .title {
+      font-size: 13px;
+      padding: 12px 14px;
+      line-height: 1.4;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+    }
+    .lil-gui.root.closed > .title {
+      border-radius: 12px;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "lil-gui": "https://unpkg.com/lil-gui@0.19.2/dist/lil-gui.esm.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="three-canvas"></canvas>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">等待开启音频…</span></div>
+    <div class="badge ok" id="energyBadge" style="display:none"><span class="dot"></span><span id="energyText">能量 0</span></div>
+  </div>
+
+  <div id="panel">
+    <button id="toggleBtn">⛰️ 控制台</button>
+    <div id="panelBody">
+      <h3>🏔️ 声波山脉 · 使用说明</h3>
+      <ol>
+        <li>点击下方 <b>开启音频之旅</b> 按钮</li>
+        <li>选择正在播放音乐的 <b>标签页</b></li>
+        <li>勾选 <b>"分享音频"</b>（重要！）</li>
+        <li>看山脉随旋律呼吸、亮带扫过 ✨</li>
+      </ol>
+      <h3 style="margin-top:14px">🎚️ 实时频段</h3>
+      <div class="row"><span>低频 · 鼓点</span><span class="val" id="bassVal">0</span></div>
+      <div class="row"><span>中频 · 旋律</span><span class="val" id="midVal">0</span></div>
+      <div class="row"><span>高频 · 镲片</span><span class="val" id="trebleVal">0</span></div>
+      <div class="row"><span>节拍</span><span class="val" id="beatVal">--</span></div>
+      <div class="row"><span>顶点数</span><span class="val" id="vertVal">0</span></div>
+    </div>
+  </div>
+
+  <div id="startMask">
+    <div class="startCard">
+      <h1>⛰️ Sound Mountains</h1>
+      <p>用线条勾勒的山脉，随你播放的每一段旋律起伏呼吸，金色光带沿山脊缓缓扫过 🌄</p>
+      <p class="tip">💡 在弹出的窗口里选择 <b>「Chrome 标签页」</b> 或 <b>「整个屏幕」</b>，<br/>务必勾选 <b>「分享音频」</b>，否则听不到声音哦～</p>
+      <button id="startBtn">🎵 开启音频之旅</button>
+      <p class="tip" style="margin-top:14px">仅在浏览器本地运行，不会上传任何数据 💙</p>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import GUI from 'lil-gui';
+
+// ============= UI =============
+const toggleBtn = document.getElementById('toggleBtn');
+const panelBody = document.getElementById('panelBody');
+const startMask = document.getElementById('startMask');
+const startBtn = document.getElementById('startBtn');
+const statusText = document.getElementById('statusText');
+const statusBadge = document.getElementById('statusBadge');
+const energyBadge = document.getElementById('energyBadge');
+const energyText = document.getElementById('energyText');
+const bassVal = document.getElementById('bassVal');
+const midVal = document.getElementById('midVal');
+const trebleVal = document.getElementById('trebleVal');
+const beatVal = document.getElementById('beatVal');
+const vertVal = document.getElementById('vertVal');
+const toastEl = document.getElementById('toast');
+
+toggleBtn.addEventListener('click', () => panelBody.classList.toggle('open'));
+
+let toastTimer = null;
+function toast(msg, dur = 2200) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), dur);
+}
+
+// ============= Three.js Setup =============
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x02050d, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x02050d, 0.0022);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 4000);
+camera.position.set(0, 90, 240);
+camera.lookAt(0, 0, 0);
+
+// 后期 Bloom
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.65, 0.7, 0.18
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// 鼠标控制 + 自动旋转
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.rotateSpeed = 0.55;
+controls.enableZoom = true;
+controls.enablePan = true;
+controls.zoomSpeed = 1.0;
+controls.minDistance = 60;
+controls.maxDistance = 900;
+controls.target.set(0, 0, 0);
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+
+// ============= 音频频谱 → 1D DataTexture（GPU 端读取） =============
+const SPEC_SIZE = 256;
+const specData = new Uint8Array(SPEC_SIZE * 4); // RGBA
+const specTexture = new THREE.DataTexture(specData, SPEC_SIZE, 1, THREE.RGBAFormat);
+specTexture.minFilter = THREE.LinearFilter;
+specTexture.magFilter = THREE.LinearFilter;
+specTexture.wrapS = THREE.ClampToEdgeWrapping;
+specTexture.needsUpdate = true;
+
+// ============= 山脉地形：水平等高线扫描 =============
+// 用 N_LINES 条独立 Line，每条 N_POINTS 个顶点，沿 X 方向铺开
+const N_LINES = 80;          // 山脉等高线数量（Z 方向）
+const N_POINTS = 260;         // 每条线上的顶点数（X 方向）
+const PLANE_W = 520;
+const PLANE_D = 380;
+
+const mountainGroup = new THREE.Group();
+scene.add(mountainGroup);
+
+// 通用 vertex shader：每个顶点根据 (uvX, uvZ) 在 GLSL 端做 FBM 噪声 + 频谱采样推高 Y
+const mountainVS = /* glsl */`
+  uniform float uTime;
+  uniform float uAmp;          // 总振幅
+  uniform float uNoiseScale;   // 噪声缩放
+  uniform float uAudioBoost;   // 音频灵敏度
+  uniform float uBass;
+  uniform float uMid;
+  uniform float uTreble;
+  uniform sampler2D uSpec;     // 频谱纹理
+  uniform float uHighlightZ;   // 当前高亮带的 Z 归一坐标 [0,1]
+  uniform float uHighlightWidth;
+  attribute float aLineIdx;    // 当前顶点所在的山脉线序号 [0, N_LINES-1]
+  attribute float aTotalLines;
+  varying float vHeight;
+  varying float vHighlight;
+  varying float vUvX;
+  varying float vSpecBin;
+
+  // hash + value noise + fbm
+  float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p){
+    vec2 i = floor(p); vec2 f = fract(p);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+  }
+  float fbm(vec2 p){
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++){
+      v += a * noise(p);
+      p *= 2.02;
+      a *= 0.5;
+    }
+    return v;
+  }
+
+  void main(){
+    vec3 pos = position;
+    float zN = aLineIdx / max(aTotalLines - 1.0, 1.0);   // [0,1]
+    float xN = (pos.x / ${(PLANE_W / 2).toFixed(1)}) * 0.5 + 0.5; // [0,1]
+    vUvX = xN;
+
+    // 采样频谱：靠近镜头（zN 大）用低频，远处用高频，营造声波从近到远扩散感
+    float specU = mix(0.02, 0.85, xN); // X 方向映射到 256 bin
+    float specVal = texture2D(uSpec, vec2(specU, 0.5)).r;
+    vSpecBin = specVal;
+
+    // FBM 多层地形噪声
+    vec2 nUv = vec2(xN * uNoiseScale, zN * uNoiseScale * 0.85) + vec2(uTime * 0.04, uTime * 0.02);
+    float baseHeight = fbm(nUv) - 0.5;        // [-0.5, 0.5]
+    float ridge = pow(abs(fbm(nUv * 2.5 + 7.3) - 0.5) * 2.0, 1.4); // 山脊锐化
+
+    // 边缘衰减：离中心远的地方山势变低，避免边缘乱跳
+    float edgeFade = smoothstep(0.0, 0.18, xN) * smoothstep(1.0, 0.82, xN);
+
+    // 音频驱动：远处用高频镲片、中段用旋律、近处用鼓点
+    float audioMix = uBass * 1.2 * pow(zN, 1.6) +
+                     uMid  * 1.0 * (1.0 - abs(zN - 0.5) * 1.4) +
+                     uTreble * 1.4 * (1.0 - pow(zN, 1.2));
+    float audioPush = (specVal * 1.6 + audioMix) * uAudioBoost;
+
+    float h = (baseHeight * 1.4 + ridge * 1.6 + audioPush) * uAmp * edgeFade;
+    pos.y += h;
+    vHeight = h;
+
+    // 高亮带：判断当前线 zN 与 uHighlightZ 的距离
+    float d = abs(zN - uHighlightZ);
+    vHighlight = smoothstep(uHighlightWidth, 0.0, d);
+
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+
+const mountainFS = /* glsl */`
+  uniform vec3 uColorNear;
+  uniform vec3 uColorFar;
+  uniform vec3 uColorHighlight;
+  uniform float uOpacity;
+  varying float vHeight;
+  varying float vHighlight;
+  varying float vUvX;
+  varying float vSpecBin;
+
+  void main(){
+    vec3 col = mix(uColorFar, uColorNear, smoothstep(-2.0, 18.0, vHeight));
+    // 高亮带：金色／鹅黄
+    col = mix(col, uColorHighlight, vHighlight);
+    // 频谱微调：声音大的地方更亮
+    col += vSpecBin * 0.18 * vec3(0.6, 0.85, 1.0);
+    // 边缘渐隐
+    float edge = smoothstep(0.0, 0.08, vUvX) * smoothstep(1.0, 0.92, vUvX);
+    float alpha = uOpacity * edge * (0.55 + vHighlight * 0.6);
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
+
+const mountainUniforms = {
+  uTime:       { value: 0 },
+  uAmp:        { value: 28.0 },
+  uNoiseScale: { value: 3.6 },
+  uAudioBoost: { value: 28.0 },
+  uBass:       { value: 0 },
+  uMid:        { value: 0 },
+  uTreble:     { value: 0 },
+  uSpec:       { value: specTexture },
+  uHighlightZ: { value: 0.0 },
+  uHighlightWidth: { value: 0.025 },
+  uColorNear:  { value: new THREE.Color('#4dd0ff') },
+  uColorFar:   { value: new THREE.Color('#1d4f8a') },
+  uColorHighlight: { value: new THREE.Color('#ffd66b') },
+  uOpacity:    { value: 0.95 },
+};
+
+// ============= 构建若干条 Line（每条 = 一条等高线） =============
+// 用 LineSegments 加 dot 风格：实际我们用 Line（折线）配合 ShaderMaterial
+const lineMaterial = new THREE.ShaderMaterial({
+  uniforms: mountainUniforms,
+  vertexShader: mountainVS,
+  fragmentShader: mountainFS,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+// 同时构建一份"亮点"几何（每条线在顶点处放一个 Point），增强抖音参考图里的"颗粒线条"质感
+const pointMaterial = new THREE.ShaderMaterial({
+  uniforms: { ...mountainUniforms, uPixelRatio: { value: renderer.getPixelRatio() } },
+  vertexShader: mountainVS.replace(
+    'gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);',
+    `gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+     gl_PointSize = (1.6 + vHighlight * 3.5) * uPixelRatio * (220.0 / -gl_Position.w);`
+  ).replace(
+    'varying float vSpecBin;',
+    'varying float vSpecBin;\nuniform float uPixelRatio;'
+  ),
+  fragmentShader: /* glsl */`
+    varying float vHighlight;
+    varying float vUvX;
+    varying float vHeight;
+    uniform vec3 uColorNear;
+    uniform vec3 uColorFar;
+    uniform vec3 uColorHighlight;
+    void main(){
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float core = smoothstep(0.5, 0.0, d);
+      float halo = exp(-d * d * 14.0);
+      vec3 col = mix(uColorFar, uColorNear, smoothstep(-2.0, 18.0, vHeight));
+      col = mix(col, uColorHighlight, vHighlight);
+      float a = (core * 0.85 + halo * 0.5) * (0.45 + vHighlight * 0.55);
+      float edge = smoothstep(0.0, 0.08, vUvX) * smoothstep(1.0, 0.92, vUvX);
+      gl_FragColor = vec4(col, a * edge);
+    }
+  `,
+  transparent: true,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+
+let totalVerts = 0;
+for (let li = 0; li < N_LINES; li++) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N_POINTS * 3);
+  const aLineIdx = new Float32Array(N_POINTS);
+  const aTotalLines = new Float32Array(N_POINTS);
+  const z = (li / (N_LINES - 1) - 0.5) * PLANE_D;
+  for (let pi = 0; pi < N_POINTS; pi++) {
+    const x = (pi / (N_POINTS - 1) - 0.5) * PLANE_W;
+    pos[pi * 3]     = x;
+    pos[pi * 3 + 1] = 0;
+    pos[pi * 3 + 2] = z;
+    aLineIdx[pi] = li;
+    aTotalLines[pi] = N_LINES;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aLineIdx', new THREE.BufferAttribute(aLineIdx, 1));
+  geo.setAttribute('aTotalLines', new THREE.BufferAttribute(aTotalLines, 1));
+
+  const line = new THREE.Line(geo, lineMaterial);
+  mountainGroup.add(line);
+
+  const pts = new THREE.Points(geo, pointMaterial);
+  mountainGroup.add(pts);
+
+  totalVerts += N_POINTS;
+}
+vertVal.textContent = totalVerts.toLocaleString();
+
+// ============= 背景星场（点缀） =============
+const STAR_COUNT = 1500;
+const starGeo = new THREE.BufferGeometry();
+const sPos = new Float32Array(STAR_COUNT * 3);
+const sSize = new Float32Array(STAR_COUNT);
+for (let i = 0; i < STAR_COUNT; i++) {
+  const r = 700 + Math.random() * 1500;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  sPos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+  sPos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+  sPos[i * 3 + 2] = r * Math.cos(phi);
+  sSize[i] = Math.random() < 0.05 ? 3.0 + Math.random() * 2.0 : 0.8 + Math.random() * 1.0;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+starGeo.setAttribute('aSize', new THREE.BufferAttribute(sSize, 1));
+const starMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uPixelRatio: { value: renderer.getPixelRatio() }
+  },
+  vertexShader: /* glsl */`
+    attribute float aSize;
+    uniform float uTime;
+    uniform float uPixelRatio;
+    varying float vSeed;
+    void main(){
+      vSeed = fract(sin(aSize * 13.7) * 43758.5);
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float tw = 0.7 + 0.3 * sin(uTime * 2.0 + vSeed * 12.566);
+      gl_PointSize = aSize * tw * uPixelRatio * (260.0 / -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    varying float vSeed;
+    void main(){
+      vec2 uv = gl_PointCoord - 0.5;
+      float d = length(uv);
+      if (d > 0.5) discard;
+      float core = smoothstep(0.5, 0.0, d);
+      float halo = exp(-d * d * 12.0);
+      vec3 col = mix(vec3(0.7, 0.85, 1.0), vec3(1.0, 0.95, 0.8), vSeed);
+      gl_FragColor = vec4(col, core * 0.6 + halo * 0.3);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// ============= GUI =============
+const params = {
+  amplitude: 28.0,
+  noiseScale: 3.6,
+  audioBoost: 28.0,
+  highlightSpeed: 0.08,    // 高亮带扫描速度（每秒推进的归一化距离）
+  highlightWidth: 0.025,
+  autoRotateSpeed: 0.35,
+  bloomStrength: 0.65,
+  bloomRadius: 0.7,
+  bloomThreshold: 0.18,
+  exposure: 0.95,
+  opacity: 0.95,
+  colorNear: '#4dd0ff',
+  colorFar: '#1d4f8a',
+  colorHighlight: '#ffd66b',
+  preset: 'cyan',
+};
+
+const gui = new GUI({ title: '⛰️ Mountains 调试', width: 280 });
+gui.close();
+
+const fShape = gui.addFolder('🏔️ 山脉形状');
+fShape.add(params, 'amplitude', 2, 80, 0.5).name('振幅 amplitude').onChange(v => mountainUniforms.uAmp.value = v);
+fShape.add(params, 'noiseScale', 0.5, 10, 0.05).name('噪声尺度').onChange(v => mountainUniforms.uNoiseScale.value = v);
+fShape.add(params, 'opacity', 0, 1, 0.01).name('线条不透明度').onChange(v => mountainUniforms.uOpacity.value = v);
+
+const fAudio = gui.addFolder('🎵 音频驱动');
+fAudio.add(params, 'audioBoost', 0, 100, 0.5).name('音频灵敏度').onChange(v => mountainUniforms.uAudioBoost.value = v);
+
+const fHighlight = gui.addFolder('🌟 高亮扫描带');
+fHighlight.add(params, 'highlightSpeed', -0.5, 0.5, 0.005).name('扫描速度');
+fHighlight.add(params, 'highlightWidth', 0.005, 0.2, 0.005).name('扫描带宽度').onChange(v => mountainUniforms.uHighlightWidth.value = v);
+fHighlight.addColor(params, 'colorHighlight').name('高亮颜色').onChange(v => mountainUniforms.uColorHighlight.value.set(v));
+
+const fColor = gui.addFolder('🎨 颜色');
+fColor.addColor(params, 'colorNear').name('近处/高山').onChange(v => mountainUniforms.uColorNear.value.set(v));
+fColor.addColor(params, 'colorFar').name('远处/谷底').onChange(v => mountainUniforms.uColorFar.value.set(v));
+
+const fBloom = gui.addFolder('✨ Bloom 辉光');
+fBloom.add(params, 'bloomStrength', 0, 2, 0.01).name('强度').onChange(v => bloomPass.strength = v);
+fBloom.add(params, 'bloomRadius', 0, 2, 0.01).name('半径').onChange(v => bloomPass.radius = v);
+fBloom.add(params, 'bloomThreshold', 0, 1, 0.01).name('阈值').onChange(v => bloomPass.threshold = v);
+fBloom.add(params, 'exposure', 0.1, 2, 0.01).name('全局曝光').onChange(v => renderer.toneMappingExposure = v);
+
+const fCam = gui.addFolder('🎥 视角');
+fCam.add(params, 'autoRotateSpeed', -3, 3, 0.05).name('自动旋转速度').onChange(v => controls.autoRotateSpeed = v);
+
+const presets = {
+  cyan: {
+    colorNear: '#4dd0ff', colorFar: '#1d4f8a', colorHighlight: '#ffd66b',
+    amplitude: 28.0, audioBoost: 28.0, bloomStrength: 0.65,
+  },
+  aurora: {
+    colorNear: '#7df0d4', colorFar: '#1a3a5e', colorHighlight: '#ff7ab8',
+    amplitude: 34.0, audioBoost: 32.0, bloomStrength: 0.75,
+  },
+  sunset: {
+    colorNear: '#ffb47a', colorFar: '#5a2860', colorHighlight: '#ffe48a',
+    amplitude: 26.0, audioBoost: 24.0, bloomStrength: 0.55,
+  },
+  monochrome: {
+    colorNear: '#cfe9ff', colorFar: '#26354d', colorHighlight: '#ffffff',
+    amplitude: 24.0, audioBoost: 22.0, bloomStrength: 0.45,
+  },
+};
+gui.add(params, 'preset', Object.keys(presets)).name('🎨 预设').onChange(name => applyPreset(name));
+function applyPreset(name) {
+  const p = presets[name]; if (!p) return;
+  Object.assign(params, p);
+  mountainUniforms.uColorNear.value.set(params.colorNear);
+  mountainUniforms.uColorFar.value.set(params.colorFar);
+  mountainUniforms.uColorHighlight.value.set(params.colorHighlight);
+  mountainUniforms.uAmp.value = params.amplitude;
+  mountainUniforms.uAudioBoost.value = params.audioBoost;
+  bloomPass.strength = params.bloomStrength;
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+}
+
+// ============= 音频 =============
+let audioCtx = null, analyser = null, freqData = null;
+const BAND = { bassEnd: 10, midEnd: 93, trebleEnd: 372 };
+let bass = 0, mid = 0, treble = 0, energy = 0;
+let beatHold = 0, beatNow = false;
+const bassHistory = [];
+
+async function startAudio() {
+  try {
+    statusText.textContent = '请求屏幕音频权限…';
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { width: 320, height: 180, frameRate: 1 },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      toast('⚠️ 未捕获到音频，请勾选"分享音频"重试');
+      statusText.textContent = '未捕获到音频';
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    stream.getVideoTracks().forEach(t => t.stop());
+    const audioStream = new MediaStream(audioTracks);
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(audioStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+
+    statusBadge.classList.add('ok');
+    statusText.textContent = '🎧 正在聆听音乐';
+    energyBadge.style.display = '';
+    startMask.classList.add('hide');
+    toast('⛰️ 山脉已就绪～');
+
+    audioTracks[0].addEventListener('ended', () => {
+      statusBadge.classList.remove('ok');
+      statusText.textContent = '音频共享已结束';
+      toast('🛑 音频共享已停止');
+    });
+  } catch (err) {
+    console.error(err);
+    toast('😢 启动失败：' + (err.message || err.name));
+  }
+}
+startBtn.addEventListener('click', startAudio);
+
+function analyzeAudio() {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(freqData);
+  let bs = 0, bsCnt = 0, md = 0, mdCnt = 0, tb = 0, tbCnt = 0;
+  for (let i = 1; i < BAND.trebleEnd && i < freqData.length; i++) {
+    const v = freqData[i];
+    if (i < BAND.bassEnd) { bs += v; bsCnt++; }
+    else if (i < BAND.midEnd) { md += v; mdCnt++; }
+    else { tb += v; tbCnt++; }
+  }
+  bass = bsCnt ? bs / bsCnt / 255 : 0;
+  mid = mdCnt ? md / mdCnt / 255 : 0;
+  treble = tbCnt ? tb / tbCnt / 255 : 0;
+  energy = (bass * 1.2 + mid + treble * 0.8) / 3;
+
+  // 节拍检测
+  bassHistory.push(bass);
+  if (bassHistory.length > 43) bassHistory.shift();
+  const bassEMA = bassHistory.reduce((a, b) => a + b, 0) / bassHistory.length;
+  const beatThreshold = bassEMA * 1.35 + 0.05;
+  beatNow = false;
+  if (bass > beatThreshold && beatHold <= 0) {
+    beatNow = true;
+    beatHold = 8;
+  }
+  beatHold--;
+
+  // 把频谱写到 1D 纹理（log 重映射，让低频区段细节更丰富）
+  const N = freqData.length;
+  for (let i = 0; i < SPEC_SIZE; i++) {
+    // 用 log 映射：i=0 → 低频, i=SPEC_SIZE-1 → 高频
+    const t = i / (SPEC_SIZE - 1);
+    const srcIdx = Math.min(N - 1, Math.floor(Math.pow(t, 1.4) * BAND.trebleEnd));
+    const v = freqData[srcIdx];
+    specData[i * 4]     = v;
+    specData[i * 4 + 1] = v;
+    specData[i * 4 + 2] = v;
+    specData[i * 4 + 3] = 255;
+  }
+  specTexture.needsUpdate = true;
+
+  energyText.textContent = `能量 ${Math.round(energy * 100)}`;
+  bassVal.textContent = Math.round(bass * 100);
+  midVal.textContent = Math.round(mid * 100);
+  trebleVal.textContent = Math.round(treble * 100);
+  beatVal.textContent = beatNow ? '💥 BEAT' : '--';
+  if (beatNow) statusBadge.classList.add('beat'); else statusBadge.classList.remove('beat');
+}
+
+// ============= 渲染循环 =============
+const clock = new THREE.Clock();
+let highlightZ = 0;
+
+function animate() {
+  const dt = clock.getDelta();
+  const t = clock.elapsedTime;
+
+  analyzeAudio();
+
+  // 平滑频段，传入 shader
+  mountainUniforms.uTime.value = t;
+  mountainUniforms.uBass.value   += (bass - mountainUniforms.uBass.value) * 0.18;
+  mountainUniforms.uMid.value    += (mid  - mountainUniforms.uMid.value) * 0.15;
+  mountainUniforms.uTreble.value += (treble - mountainUniforms.uTreble.value) * 0.22;
+
+  // 高亮扫描带：循环从 0 → 1 → 0
+  highlightZ += params.highlightSpeed * dt;
+  if (highlightZ > 1.15) highlightZ = -0.15;
+  if (highlightZ < -0.2) highlightZ = 1.1;
+  // 节拍时让高亮带"跳"一下
+  if (beatNow) highlightZ += 0.06;
+  mountainUniforms.uHighlightZ.value = highlightZ;
+
+  // 节拍 → 临时强化 Bloom
+  if (beatNow) bloomPass.strength = Math.min(2.0, bloomPass.strength + 0.18);
+  else bloomPass.strength += (params.bloomStrength - bloomPass.strength) * 0.06;
+
+  starMat.uniforms.uTime.value = t;
+
+  controls.update();
+  composer.render();
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ============= Resize =============
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.setSize(w, h);
+});
+</script>
+</body>
+</html>

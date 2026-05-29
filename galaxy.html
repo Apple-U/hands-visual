@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🌌 Galaxy Concert · 银河演唱会 (Three.js)</title>
+  <style>
+    :root {
+      --bg: #02010a;
+      --fg: #f5f5f7;
+      --accent: #b48dff;
+      --accent2: #4dd0ff;
+      --accent3: #ff7ab8;
+      --muted: #8a8a96;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #three-canvas {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100vh;
+      display: block;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(15, 15, 25, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #b48dff; box-shadow: 0 0 12px #b48dff; }
+    .badge.beat .dot { background: #ff7ab8; box-shadow: 0 0 16px #ff7ab8; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 11;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    }
+    #toggleBtn {
+      pointer-events: auto;
+      cursor: pointer;
+      background: rgba(20, 16, 36, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(180, 141, 255, 0.3);
+      color: var(--fg);
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 24px rgba(180, 141, 255, 0.15);
+    }
+    #toggleBtn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 32px rgba(180, 141, 255, 0.3);
+      border-color: rgba(180, 141, 255, 0.6);
+    }
+    #panelBody {
+      pointer-events: auto;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(.4,.2,.2,1), opacity 0.3s ease;
+      opacity: 0;
+      background: rgba(15, 12, 28, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.08);
+      width: 320px;
+    }
+    #panelBody.open {
+      max-height: 600px;
+      opacity: 1;
+      padding: 16px 18px;
+    }
+    #panelBody h3 {
+      margin: 4px 0 10px;
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+    }
+    #panelBody ol {
+      padding-left: 20px;
+      margin: 6px 0;
+      font-size: 12.5px;
+      line-height: 1.7;
+      color: #d4d4dc;
+    }
+    #panelBody li b { color: var(--accent2); font-weight: 600; }
+    #panelBody .row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 0;
+      border-top: 1px dashed rgba(255,255,255,0.07);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #panelBody .row span.val { color: #fff; font-variant-numeric: tabular-nums; }
+
+    #toast {
+      position: fixed;
+      bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(15, 12, 28, 0.85);
+      backdrop-filter: blur(14px);
+      border: 1px solid rgba(180, 141, 255, 0.3);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-size: 13px;
+      color: #fff;
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      pointer-events: none;
+      z-index: 50;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .lil-gui {
+      --width: 280px;
+      --background-color: rgba(15, 12, 28, 0.85);
+      --text-color: #e8e8ee;
+      --title-background-color: rgba(180, 141, 255, 0.18);
+      --title-text-color: #ffffff;
+      --widget-color: rgba(180, 141, 255, 0.18);
+      --hover-color: rgba(180, 141, 255, 0.32);
+      --focus-color: rgba(180, 141, 255, 0.45);
+      --number-color: #ff7ab8;
+      --string-color: #4dd0ff;
+      --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(180, 141, 255, 0.25);
+      border-radius: 12px;
+      top: 80px !important;
+    }
+    .lil-gui.root > .title {
+      font-size: 13px;
+      padding: 12px 14px;
+      line-height: 1.4;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+    }
+    .lil-gui.root.closed > .title {
+      border-radius: 12px;
+    }
+
+    /* ============= 网易云音乐浮层 ============= */
+    #neteaseCard {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: rgba(15, 12, 28, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(180, 141, 255, 0.25);
+      border-radius: 999px;
+      box-shadow: 0 6px 32px rgba(180, 141, 255, 0.15);
+      max-width: 70vw;
+      transition: all 0.3s ease;
+    }
+    #neteaseCover {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #b48dff, #4dd0ff);
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+      animation: spin 14s linear infinite;
+      animation-play-state: paused;
+      box-shadow: 0 0 12px rgba(180, 141, 255, 0.4);
+    }
+    #neteaseCard.playing #neteaseCover { animation-play-state: running; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #neteaseInfo {
+      display: flex; flex-direction: column;
+      min-width: 120px; max-width: 280px;
+    }
+    #neteaseTitle {
+      font-size: 13px; font-weight: 600; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #neteaseArtist {
+      font-size: 11px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #neteaseInput {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(180, 141, 255, 0.2);
+      border-radius: 999px;
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 12px;
+      width: 200px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    #neteaseInput::placeholder { color: rgba(255,255,255,0.4); }
+    #neteaseInput:focus {
+      border-color: rgba(180, 141, 255, 0.5);
+      background: rgba(255,255,255,0.1);
+    }
+    #neteaseProgress {
+      position: relative;
+      width: 160px;
+      height: 26px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+    }
+    #neteaseProgressBar {
+      position: relative;
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    #neteaseProgressBar::after {
+      content: '';
+      position: absolute; inset: 0;
+      width: var(--progress, 0%);
+      background: linear-gradient(90deg, #b48dff, #4dd0ff);
+      border-radius: 2px;
+      transition: width 0.15s linear;
+    }
+    #neteaseTime {
+      font-size: 10px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.3px;
+    }
+    .neteaseBtn {
+      cursor: pointer;
+      background: rgba(180, 141, 255, 0.15);
+      border: 1px solid rgba(180, 141, 255, 0.3);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .neteaseBtn:hover {
+      background: rgba(180, 141, 255, 0.3);
+      border-color: rgba(180, 141, 255, 0.55);
+    }
+    .neteaseBtn.primary {
+      background: linear-gradient(135deg, #b48dff, #4dd0ff);
+      border: none;
+      color: #1a0e2e;
+      font-weight: 600;
+    }
+    #neteaseSync { display: flex; gap: 4px; align-items: center; }
+
+    /* ============= 自定义字体 · 福禄灵感喝茶体 ============= */
+    @font-face {
+      font-family: 'FuLuLingGan';
+      src: url('./fonts/FuLuLingGanHeChaTi/FuLuLingGanHeChaTi-2.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* ============= 底部跑马灯歌词 ============= */
+    #lyricBar {
+      position: fixed;
+      bottom: 58px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 11;
+      display: flex; flex-direction: column; align-items: center;
+      pointer-events: none;
+      max-width: 90vw;
+      text-align: center;
+    }
+    #lyricCurrent {
+      font-family: 'FuLuLingGan', 'PingFang SC', sans-serif;
+      font-size: 32px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 2px;
+      text-shadow:
+        0 0 14px rgba(180, 141, 255, 0.7),
+        0 0 4px rgba(0,0,0,0.85);
+      transition: all 0.4s cubic-bezier(.4,.2,.2,1);
+      max-width: 90vw;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      padding: 0 12px;
+    }
+    #lyricNext {
+      font-family: 'FuLuLingGan', 'PingFang SC', sans-serif;
+      font-size: 17px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 8px;
+      letter-spacing: 1px;
+      text-shadow: 0 0 4px rgba(0,0,0,0.85);
+      max-width: 80vw;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      padding: 0 12px;
+    }
+    #lyricCurrent.beat {
+      transform: scale(1.05);
+      text-shadow:
+        0 0 22px rgba(255, 122, 184, 0.85),
+        0 0 6px rgba(0,0,0,0.9);
+    }
+    #lyricBar.hidden { opacity: 0; transform: translateX(-50%) translateY(10px); }
+
+    .lil-gui.closed > .title:before{
+      position: absolute;
+      top:2px;
+    }
+    /* ============= 模态框（搜索/歌单/登录） ============= */
+    #modalMask, #loginMask {
+      position: fixed; inset: 0;
+      background: rgba(2, 1, 10, 0.65);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 998;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.25s ease;
+    }
+    #modalMask.hidden, #loginMask.hidden {
+      opacity: 0; pointer-events: none;
+    }
+    .modalCard {
+      width: 520px;
+      max-width: 90vw;
+      max-height: 80vh;
+      background: rgba(15, 12, 28, 0.92);
+      border: 1px solid rgba(180, 141, 255, 0.3);
+      border-radius: 18px;
+      box-shadow: 0 20px 80px rgba(180, 141, 255, 0.25);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .modalHead {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .modalTitle {
+      font-size: 15px; font-weight: 600; color: #fff;
+      background: linear-gradient(90deg, #b48dff, #4dd0ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .modalSearchRow {
+      display: flex; gap: 8px; padding: 12px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .modalSearchRow input {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(180, 141, 255, 0.2);
+      border-radius: 999px;
+      padding: 8px 14px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+    .modalSearchRow input:focus {
+      border-color: rgba(180, 141, 255, 0.5);
+      background: rgba(255,255,255,0.1);
+    }
+    .modalList {
+      overflow-y: auto;
+      max-height: 50vh;
+      padding: 4px 0;
+    }
+    .modalList::-webkit-scrollbar { width: 6px; }
+    .modalList::-webkit-scrollbar-thumb { background: rgba(180,141,255,0.3); border-radius: 3px; }
+    .modalRow {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 18px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .modalRow:hover { background: rgba(180,141,255,0.12); }
+    .modalRowCover {
+      width: 38px; height: 38px;
+      border-radius: 6px;
+      background-size: cover;
+      background-position: center;
+      background-color: rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .modalRowText {
+      flex: 1;
+      min-width: 0;
+    }
+    .modalRowTitle {
+      font-size: 13px;
+      color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .modalRowSub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .modalRowBadge {
+      font-size: 10px;
+      color: #ffd66b;
+      border: 1px solid rgba(255,214,107,0.4);
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .modalEmpty {
+      padding: 40px 20px; text-align: center;
+      color: var(--muted); font-size: 13px;
+    }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+      "lil-gui": "https://unpkg.com/lil-gui@0.19.2/dist/lil-gui.esm.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="three-canvas"></canvas>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">等待开启音频…</span></div>
+    <div class="badge ok" id="energyBadge" style="display:none"><span class="dot"></span><span id="energyText">能量 0</span></div>
+  </div>
+
+  <div id="panel">
+    <button id="toggleBtn">🌌 控制台</button>
+    <div id="panelBody">
+      <h3>🌠 银河演唱会 · 使用说明</h3>
+      <ol>
+        <li>点击下方 <b>开启音频之旅</b> 按钮</li>
+        <li>选择正在播放音乐的 <b>标签页</b></li>
+        <li>勾选 <b>"分享音频"</b>（重要！）</li>
+        <li>欣赏 GPU 万粒子在你眼前起舞 ✨</li>
+      </ol>
+      <h3 style="margin-top:14px">🎚️ 实时频段</h3>
+      <div class="row"><span>低频 · 鼓点</span><span class="val" id="bassVal">0</span></div>
+      <div class="row"><span>中频 · 旋律</span><span class="val" id="midVal">0</span></div>
+      <div class="row"><span>高频 · 镲片</span><span class="val" id="trebleVal">0</span></div>
+      <div class="row"><span>节拍</span><span class="val" id="beatVal">--</span></div>
+      <div class="row"><span>渲染粒子</span><span class="val" id="particleVal">0</span></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- ============= 网易云音乐浮层 ============= -->
+  <div id="neteaseCard">
+    <div id="neteaseCover"></div>
+    <div id="neteaseInfo">
+      <div id="neteaseTitle">未加载歌曲</div>
+      <div id="neteaseArtist">点 🔍 搜索 / 📃 我的歌单</div>
+    </div>
+    <div id="neteaseProgress">
+      <div id="neteaseProgressBar"></div>
+      <div id="neteaseTime">0:00 / 0:00</div>
+    </div>
+    <button class="neteaseBtn" id="neteasePrev" title="上一首">⏮</button>
+    <button class="neteaseBtn primary" id="neteasePlay" title="播放/暂停">▶</button>
+    <button class="neteaseBtn" id="neteaseNext" title="下一首">⏭</button>
+    <button class="neteaseBtn" id="neteaseSearch" title="搜歌">🔍</button>
+    <button class="neteaseBtn" id="neteasePlaylist" title="我的歌单">📃</button>
+    <button class="neteaseBtn" id="neteaseLogin" title="扫码登录">👤</button>
+  </div>
+
+  <!-- ============= 底部跑马灯歌词 ============= -->
+  <div id="lyricBar" class="hidden">
+    <div id="lyricCurrent">♪</div>
+    <div id="lyricNext"></div>
+  </div>
+
+  <!-- ============= 搜索 / 歌单 模态框 ============= -->
+  <div id="modalMask" class="hidden">
+    <div class="modalCard">
+      <div class="modalHead">
+        <div class="modalTitle" id="modalTitle">搜索歌曲</div>
+        <button class="neteaseBtn" id="modalClose">✕</button>
+      </div>
+      <div class="modalSearchRow" id="modalSearchRow">
+        <input id="modalSearchInput" type="text" placeholder="输入歌名 / 歌手 …" />
+        <button class="neteaseBtn primary" id="modalSearchBtn">搜索</button>
+      </div>
+      <div class="modalList" id="modalList"></div>
+    </div>
+  </div>
+
+  <!-- ============= 登录二维码 模态框 ============= -->
+  <div id="loginMask" class="hidden">
+    <div class="modalCard" style="max-width:340px">
+      <div class="modalHead">
+        <div class="modalTitle">扫码登录网易云</div>
+        <button class="neteaseBtn" id="loginClose">✕</button>
+      </div>
+      <div style="text-align:center;padding:8px 0">
+        <img id="loginQR" style="width:240px;height:240px;border-radius:14px;background:#fff;display:block;margin:0 auto 12px" />
+        <div id="loginStatus" style="font-size:13px;color:#c8c8d4">用网易云 App 扫码</div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import GUI from 'lil-gui';
+
+// ============= UI =============
+const toggleBtn = document.getElementById('toggleBtn');
+const panelBody = document.getElementById('panelBody');
+const statusText = document.getElementById('statusText');
+const statusBadge = document.getElementById('statusBadge');
+const energyBadge = document.getElementById('energyBadge');
+const energyText = document.getElementById('energyText');
+const bassVal = document.getElementById('bassVal');
+const midVal = document.getElementById('midVal');
+const trebleVal = document.getElementById('trebleVal');
+const beatVal = document.getElementById('beatVal');
+const particleVal = document.getElementById('particleVal');
+const toastEl = document.getElementById('toast');
+
+toggleBtn.addEventListener('click', () => panelBody.classList.toggle('open'));
+
+let toastTimer = null;
+function toast(msg, dur = 2200) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), dur);
+}
+
+// ============= Three.js Setup =============
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x02010a, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x02010a, 0.0008);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+camera.position.set(0, 60, 320);
+camera.lookAt(0, 0, 0);
+
+// 后期：Bloom 辉光（默认调柔）
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.23, 0.47, 0.48
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
+
+// 鼠标 3D 控制
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.rotateSpeed = 0.6;
+controls.zoomSpeed = 0.8;
+controls.minDistance = 30;
+controls.maxDistance = 1200;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.45;
+
+// ============= Shader 工厂：白蓝梦幻粒子（无贴图，纯 fragment 径向衰减） =============
+function makeParticleShader({ baseSize = 1.0, opacity = 0.85 } = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uBaseSize: { value: baseSize },
+      uPixelRatio: { value: renderer.getPixelRatio() },
+      uOpacity: { value: opacity },
+      uColdShift: { value: 0.0 }, // 0=暖白蓝, 1=冷蓝青
+      uTwinkle: { value: 0.0 }    // 高频闪烁
+    },
+    vertexShader: /* glsl */`
+      attribute float aSize;
+      attribute float aSeed;
+      varying float vSeed;
+      varying float vDistFromCenter;
+      uniform float uTime;
+      uniform float uBaseSize;
+      uniform float uPixelRatio;
+      uniform float uTwinkle;
+
+      void main() {
+        vSeed = aSeed;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        float twinkle = 0.7 + 0.3 * sin(uTime * 2.0 + aSeed * 12.566);
+        float size = aSize * uBaseSize * mix(1.0, twinkle, uTwinkle);
+        gl_PointSize = size * uPixelRatio * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+        vDistFromCenter = length(position.xz);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      varying float vSeed;
+      varying float vDistFromCenter;
+      uniform float uOpacity;
+      uniform float uColdShift;
+
+      void main() {
+        // 圆形 + 软光晕（径向高斯衰减）
+        vec2 uv = gl_PointCoord - 0.5;
+        float d = length(uv);
+        if (d > 0.5) discard;
+        float core = smoothstep(0.5, 0.0, d);
+        float halo = exp(-d * d * 12.0);
+        float alpha = pow(core, 1.4) * 0.85 + halo * 0.4;
+
+        // 白蓝梦幻：基础白，向外渐变冰蓝
+        float radial = smoothstep(0.0, 220.0, vDistFromCenter);
+        vec3 warmWhite = vec3(0.92, 0.96, 1.0);   // 微暖白
+        vec3 iceBlue   = vec3(0.55, 0.80, 1.0);   // 冰蓝
+        vec3 deepBlue  = vec3(0.30, 0.55, 0.95);  // 深蓝
+        vec3 col = mix(warmWhite, iceBlue, radial);
+        col = mix(col, deepBlue, smoothstep(0.6, 1.0, radial) * 0.6);
+
+        // 冷暖偏移
+        col = mix(col, vec3(0.7, 0.9, 1.05) * col, uColdShift);
+
+        gl_FragColor = vec4(col, alpha * uOpacity);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+}
+
+const sprite = null;
+
+// ============= 螺旋星系（核心粒子云） =============
+const GALAXY_COUNT = 15000;
+const galaxyGeo = new THREE.BufferGeometry();
+const gPos = new Float32Array(GALAXY_COUNT * 3);
+const gSize = new Float32Array(GALAXY_COUNT);
+const gSeed = new Float32Array(GALAXY_COUNT);
+const gOrig = new Float32Array(GALAXY_COUNT * 3);
+const gPhase = new Float32Array(GALAXY_COUNT);
+const gRadius = new Float32Array(GALAXY_COUNT);
+const gAngle = new Float32Array(GALAXY_COUNT);
+const gArm = new Float32Array(GALAXY_COUNT);
+
+const ARMS = 4;
+for (let i = 0; i < GALAXY_COUNT; i++) {
+  const radius = Math.pow(Math.random(), 0.7) * 200 + 8;
+  const armIdx = i % ARMS;
+  const armOffset = (armIdx / ARMS) * Math.PI * 2;
+  const spin = radius * 0.018;
+  const randomness = Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * 12;
+  const randomnessY = Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * 6;
+
+  const angle = armOffset + spin + (Math.random() - 0.5) * 0.3;
+  const x = Math.cos(angle) * radius + randomness;
+  const z = Math.sin(angle) * radius + randomness;
+  const y = randomnessY;
+
+  gPos[i*3]   = x;
+  gPos[i*3+1] = y;
+  gPos[i*3+2] = z;
+  gOrig[i*3]   = x;
+  gOrig[i*3+1] = y;
+  gOrig[i*3+2] = z;
+
+  gRadius[i] = radius;
+  gAngle[i] = angle;
+  gArm[i] = armIdx;
+  gPhase[i] = Math.random() * Math.PI * 2;
+
+  // 随机尺寸：少量大颗（亮星），大量小颗（尘埃）
+  gSize[i] = Math.random() < 0.05 ? 3.5 + Math.random() * 2.5 : 0.8 + Math.random() * 1.2;
+  gSeed[i] = Math.random();
+}
+galaxyGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3));
+galaxyGeo.setAttribute('aSize', new THREE.BufferAttribute(gSize, 1));
+galaxyGeo.setAttribute('aSeed', new THREE.BufferAttribute(gSeed, 1));
+
+const galaxyMat = makeParticleShader({ baseSize: 1.0, opacity: 0.85 });
+const galaxy = new THREE.Points(galaxyGeo, galaxyMat);
+scene.add(galaxy);
+
+// ============= 背景星场 =============
+const STAR_COUNT = 5000;
+const starGeo = new THREE.BufferGeometry();
+const sPos = new Float32Array(STAR_COUNT * 3);
+const sSize = new Float32Array(STAR_COUNT);
+const sSeed = new Float32Array(STAR_COUNT);
+for (let i = 0; i < STAR_COUNT; i++) {
+  const r = 800 + Math.random() * 1400;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  sPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+  sPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  sPos[i*3+2] = r * Math.cos(phi);
+  sSize[i] = Math.random() < 0.04 ? 4.0 + Math.random() * 2.5 : 1.0 + Math.random() * 1.5;
+  sSeed[i] = Math.random();
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+starGeo.setAttribute('aSize', new THREE.BufferAttribute(sSize, 1));
+starGeo.setAttribute('aSeed', new THREE.BufferAttribute(sSeed, 1));
+const starMat = makeParticleShader({ baseSize: 1.4, opacity: 0.7 });
+starMat.uniforms.uColdShift.value = 0.4; // 背景星更冷
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// ============= 鼓点冲击波（环形几何） =============
+const shockwaves = [];
+function spawnShockwave(intensity) {
+  const geo = new THREE.RingGeometry(2, 2.4, 64);
+  // 白蓝梦幻：白色到冰蓝随机
+  const lightness = 0.65 + Math.random() * 0.25;
+  const mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color().setHSL(0.58, 0.6, lightness),
+    transparent: true,
+    opacity: params.shockwaveOpacity,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const ring = new THREE.Mesh(geo, mat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0, 0);
+  ring.userData.life = 0;
+  ring.userData.maxLife = 80;
+  ring.userData.intensity = intensity;
+  ring.userData.baseOpacity = params.shockwaveOpacity;
+  scene.add(ring);
+  shockwaves.push(ring);
+}
+function updateShockwaves() {
+  for (let i = shockwaves.length - 1; i >= 0; i--) {
+    const r = shockwaves[i];
+    r.userData.life++;
+    const k = r.userData.life / r.userData.maxLife;
+    const scale = 1 + k * 220 * (0.6 + r.userData.intensity);
+    r.scale.set(scale, scale, scale);
+    r.material.opacity = (1 - k) * r.userData.baseOpacity;
+    if (k >= 1) {
+      scene.remove(r);
+      r.geometry.dispose();
+      r.material.dispose();
+      shockwaves.splice(i, 1);
+    }
+  }
+}
+
+// ============= 烟花花火 Shader（柔光圆点 + 多调色板） =============
+function makeFireworkShader(palette) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uLife: { value: 0 },         // 0 → 1
+      uPixelRatio: { value: renderer.getPixelRatio() },
+      uColorA: { value: palette[0] }, // 爆开瞬间（炽白心）
+      uColorB: { value: palette[1] }, // 早期主色
+      uColorC: { value: palette[2] }, // 中段主色
+      uColorD: { value: palette[3] }  // 末段冷尾
+    },
+    vertexShader: /* glsl */`
+      attribute float aSize;
+      attribute float aSeed;
+      varying float vSeed;
+      varying float vLife;
+      uniform float uTime;
+      uniform float uLife;
+      uniform float uPixelRatio;
+      void main() {
+        vSeed = aSeed;
+        vLife = uLife;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        // 生命周期：先涨大（爆开瞬间）再缓慢缩小
+        float pop = smoothstep(0.0, 0.12, uLife);
+        float fade = mix(1.0, 0.55, smoothstep(0.2, 1.0, uLife));
+        float twinkle = 0.85 + 0.15 * sin(uTime * 8.0 + aSeed * 18.0);
+        gl_PointSize = aSize * pop * fade * twinkle * uPixelRatio * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      varying float vSeed;
+      varying float vLife;
+      uniform vec3 uColorA;
+      uniform vec3 uColorB;
+      uniform vec3 uColorC;
+      uniform vec3 uColorD;
+      void main() {
+        vec2 p = gl_PointCoord - 0.5;
+        float d = length(p);
+        if (d > 0.5) discard;
+
+        // 柔光球（无锐利十字）
+        float core = smoothstep(0.5, 0.0, d);
+        float halo = exp(-d * d * 8.0);
+        float bloom = exp(-d * d * 28.0);
+
+        // 极淡的呼吸星芒
+        vec2 ap = abs(p);
+        float spikeH = exp(-ap.y * 28.0) * smoothstep(0.5, 0.0, ap.x);
+        float spikeV = exp(-ap.x * 28.0) * smoothstep(0.5, 0.0, ap.y);
+        float softSpikes = (spikeH + spikeV) * 0.18;
+
+        // 4 段式渐变：A 炽白心 → B 早期主色 → C 中段主色 → D 末段冷尾
+        vec3 col = mix(uColorA, uColorB, smoothstep(0.0, 0.18, vLife));
+        col = mix(col, uColorC, smoothstep(0.18, 0.55, vLife));
+        col = mix(col, uColorD, smoothstep(0.55, 1.0, vLife));
+
+        // 每颗粒子额外做一点点色相微扰，避免一片纯色（用 seed 偏移）
+        col = mix(col, col.bgr, vSeed * 0.08);
+
+        float alpha = (pow(core, 1.2) * 0.55 + halo * 0.85 + bloom * 0.4 + softSpikes);
+        alpha *= mix(1.0, 0.05, smoothstep(0.0, 1.0, vLife));
+
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+}
+
+// 多套调色板：每次爆发随机抽一套（[炽心, 早期, 中段, 末段]）
+const FIREWORK_PALETTES = [
+  // 🌅 经典金粉（暖白→金粉→冰蓝→深蓝紫）
+  [ new THREE.Vector3(1.00, 0.97, 0.90), new THREE.Vector3(1.00, 0.78, 0.55), new THREE.Vector3(0.60, 0.85, 1.00), new THREE.Vector3(0.30, 0.45, 0.95) ],
+  // 🌹 玫瑰花火（白→珊瑚红→粉紫→深紫）
+  [ new THREE.Vector3(1.00, 0.96, 0.95), new THREE.Vector3(1.00, 0.50, 0.55), new THREE.Vector3(0.95, 0.55, 0.85), new THREE.Vector3(0.55, 0.30, 0.85) ],
+  // 🌿 青绿极光（白→薄荷→青蓝→深蓝）
+  [ new THREE.Vector3(0.98, 1.00, 0.96), new THREE.Vector3(0.55, 1.00, 0.80), new THREE.Vector3(0.30, 0.85, 0.95), new THREE.Vector3(0.20, 0.40, 0.85) ],
+  // 💜 紫红梦幻（白→热粉→紫→深蓝紫）
+  [ new THREE.Vector3(1.00, 0.95, 1.00), new THREE.Vector3(1.00, 0.60, 0.85), new THREE.Vector3(0.75, 0.45, 1.00), new THREE.Vector3(0.35, 0.30, 0.85) ],
+  // 🧊 冰蓝纯净（白→浅青→冰蓝→海蓝）
+  [ new THREE.Vector3(1.00, 0.99, 0.98), new THREE.Vector3(0.75, 0.95, 1.00), new THREE.Vector3(0.45, 0.75, 1.00), new THREE.Vector3(0.20, 0.40, 0.85) ],
+  // 🍑 桃橙日落（白→桃→橙红→玫紫）
+  [ new THREE.Vector3(1.00, 0.97, 0.92), new THREE.Vector3(1.00, 0.78, 0.60), new THREE.Vector3(1.00, 0.50, 0.40), new THREE.Vector3(0.65, 0.30, 0.60) ],
+  // 💛 香槟金（白→香槟→金→暖紫）
+  [ new THREE.Vector3(1.00, 0.99, 0.95), new THREE.Vector3(1.00, 0.90, 0.70), new THREE.Vector3(1.00, 0.75, 0.30), new THREE.Vector3(0.60, 0.35, 0.55) ]
+];
+
+// ============= 高频闪烁粒子（一次性烟花爆发） =============
+const sparkleSystems = [];
+function spawnSparkleBurst() {
+  const N = Math.max(5, Math.round(params.sparkleCount || 30));
+  const sizeMul = params.sparkleSize ?? 1.0;
+  const speedMul = params.sparkleSpeed ?? 1.0;
+  const streakRatio = params.sparkleStreakRatio ?? 0.12;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const vel = new Float32Array(N * 3);
+  const sz = new Float32Array(N);
+  const sd = new Float32Array(N);
+  // 爆发位置：偏上方，更像高空烟花
+  const cx = (Math.random() - 0.5) * 280;
+  const cy = 30 + Math.random() * 90;
+  const cz = (Math.random() - 0.5) * 280;
+  for (let i = 0; i < N; i++) {
+    pos[i*3]   = cx;
+    pos[i*3+1] = cy;
+    pos[i*3+2] = cz;
+    // 球面均匀分布
+    const u = Math.random();
+    const v = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi = Math.acos(2 * v - 1);
+    const isLongStreak = Math.random() < streakRatio;
+    const sp = (isLongStreak ? (1.6 + Math.random() * 1.2) : (0.5 + Math.random() * 0.9)) * speedMul;
+    const sx = Math.sin(phi) * Math.cos(theta);
+    const sy = Math.cos(phi);
+    const sz2 = Math.sin(phi) * Math.sin(theta);
+    vel[i*3]   = sx * sp;
+    vel[i*3+1] = sy * sp;
+    vel[i*3+2] = sz2 * sp;
+    // 粒子尺寸（基础 × GUI 倍率）
+    sz[i] = (isLongStreak ? (7.5 + Math.random() * 3.5) : (4.5 + Math.random() * 4.0)) * sizeMul;
+    sd[i] = Math.random();
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(sz, 1));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(sd, 1));
+  // 🎨 随机抽一套调色板
+  const palette = FIREWORK_PALETTES[Math.floor(Math.random() * FIREWORK_PALETTES.length)];
+  const mat = makeFireworkShader(palette);
+  const pts = new THREE.Points(geo, mat);
+  pts.userData.vel = vel;
+  pts.userData.life = 0;
+  pts.userData.maxLife = Math.max(30, Math.round(params.sparkleLife || 180));
+  scene.add(pts);
+  sparkleSystems.push(pts);
+}
+function updateSparkles() {
+  const GRAV = params.sparkleGravity ?? 0.012;  // GUI 控制重力
+  const DRAG = 0.985;
+  for (let i = sparkleSystems.length - 1; i >= 0; i--) {
+    const sys = sparkleSystems[i];
+    sys.userData.life++;
+    const k = sys.userData.life / sys.userData.maxLife;
+    const pos = sys.geometry.attributes.position.array;
+    const vel = sys.userData.vel;
+    for (let j = 0; j < vel.length; j += 3) {
+      vel[j+1] -= GRAV;
+      pos[j]   += vel[j];
+      pos[j+1] += vel[j+1];
+      pos[j+2] += vel[j+2];
+      vel[j]   *= DRAG;
+      vel[j+1] *= DRAG;
+      vel[j+2] *= DRAG;
+    }
+    sys.geometry.attributes.position.needsUpdate = true;
+    sys.material.uniforms.uTime.value = sys.userData.life * 0.05;
+    sys.material.uniforms.uLife.value = k;
+    if (k >= 1) {
+      scene.remove(sys);
+      sys.geometry.dispose();
+      sys.material.dispose();
+      sparkleSystems.splice(i, 1);
+    }
+  }
+}
+
+// ============= 蝴蝶状漂浮粒子（自由流体） =============
+const FLOAT_COUNT = 800;
+const floatGeo = new THREE.BufferGeometry();
+const fPos = new Float32Array(FLOAT_COUNT * 3);
+const fSize = new Float32Array(FLOAT_COUNT);
+const fSeed = new Float32Array(FLOAT_COUNT);
+const fVel = new Float32Array(FLOAT_COUNT * 3);
+const fPhase = new Float32Array(FLOAT_COUNT);
+for (let i = 0; i < FLOAT_COUNT; i++) {
+  const r = 100 + Math.random() * 250;
+  const theta = Math.random() * Math.PI * 2;
+  const phi = (Math.random() - 0.5) * 0.4;
+  fPos[i*3]   = r * Math.cos(theta);
+  fPos[i*3+1] = phi * 80 + (Math.random() - 0.5) * 20;
+  fPos[i*3+2] = r * Math.sin(theta);
+  fSize[i] = 1.5 + Math.random() * 2.5;
+  fSeed[i] = Math.random();
+  fPhase[i] = Math.random() * Math.PI * 2;
+}
+floatGeo.setAttribute('position', new THREE.BufferAttribute(fPos, 3));
+floatGeo.setAttribute('aSize', new THREE.BufferAttribute(fSize, 1));
+floatGeo.setAttribute('aSeed', new THREE.BufferAttribute(fSeed, 1));
+const floatMat = makeParticleShader({ baseSize: 2.2, opacity: 0.7 });
+const floaters = new THREE.Points(floatGeo, floatMat);
+scene.add(floaters);
+
+// ============= 中心核（billboard 能量星核：软光晕 + 六芒星芒 + 呼吸） =============
+const coreMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uIntensity: { value: 1.0 },
+    uOpacity: { value: 0.7 }
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      // billboard：让 quad 始终面向相机（消除 view 矩阵旋转，仅保留位置）
+      vec4 mvPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      mvPosition.xy += position.xy;
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform float uIntensity;
+    uniform float uOpacity;
+
+    void main() {
+      vec2 p = vUv - 0.5;
+      float d = length(p);
+      if (d > 0.5) discard;
+
+      // 1. 实心内核（极小，过曝白）
+      float core = smoothstep(0.05, 0.0, d);
+
+      // 2. 高斯柔光晕（向外渐淡）
+      float halo = exp(-d * d * 28.0);
+
+      // 3. 六芒星芒：用极坐标 cos(6θ) 做花瓣调制，再随时间慢转
+      float angle = atan(p.y, p.x) + uTime * 0.3;
+      float spikes6 = pow(max(0.0, cos(angle * 3.0)), 8.0);  // 六芒
+      float spikes4 = pow(max(0.0, cos(angle * 2.0 + 0.785)), 6.0); // 叠一层四芒
+      float starSpikes = (spikes6 + spikes4 * 0.6) * smoothstep(0.5, 0.05, d);
+
+      // 4. 颜色混合：核心暖白 → 中段冰蓝 → 外圈深蓝
+      vec3 hot   = vec3(1.0, 0.98, 0.95);  // 核心微暖白
+      vec3 ice   = vec3(0.65, 0.88, 1.0);  // 冰蓝
+      vec3 deep  = vec3(0.20, 0.45, 0.95); // 边缘深蓝
+      vec3 col = mix(ice, hot, core);
+      col = mix(col, deep, smoothstep(0.15, 0.5, d));
+
+      // 5. 合成 alpha
+      float breath = 0.85 + 0.15 * sin(uTime * 1.6);
+      float alpha = (core * 1.2 + halo * 0.55 + starSpikes * 0.7) * breath * uIntensity;
+
+      gl_FragColor = vec4(col, alpha * uOpacity);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: false
+});
+const coreGeo = new THREE.PlaneGeometry(28, 28);
+const core = new THREE.Mesh(coreGeo, coreMat);
+core.renderOrder = 999;
+scene.add(core);
+
+// 外圈柔光晕（更大的 billboard，仅高斯衰减）
+const haloMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uOpacity: { value: 0.18 }
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec4 mvPosition = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      mvPosition.xy += position.xy;
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `,
+  fragmentShader: /* glsl */`
+    varying vec2 vUv;
+    uniform float uTime;
+    uniform float uOpacity;
+    void main() {
+      vec2 p = vUv - 0.5;
+      float d = length(p);
+      if (d > 0.5) discard;
+      float halo = exp(-d * d * 8.0);
+      vec3 col = mix(vec3(0.55, 0.85, 1.0), vec3(0.25, 0.5, 0.95), smoothstep(0.0, 0.5, d));
+      gl_FragColor = vec4(col, halo * uOpacity);
+    }
+  `,
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  depthTest: false
+});
+const haloGeo = new THREE.PlaneGeometry(80, 80);
+const halo = new THREE.Mesh(haloGeo, haloMat);
+halo.renderOrder = 998;
+scene.add(halo);
+
+// ============= 参数（GUI 可调） =============
+const params = {
+  // Bloom
+  bloomStrength: 0.23,
+  bloomRadius: 0.47,
+  bloomThreshold: 0.48,
+  bloomBeatBoost: 0.64,
+  // 粒子
+  galaxySize: 1.0,
+  galaxyOpacity: 0.85,
+  starSize: 1.4,
+  starOpacity: 0.7,
+  floatSize: 2.2,
+  floatOpacity: 0.7,
+  // 节奏响应强度
+  beatPulseGain: 0.11,
+  shockwaveOpacity: 0.36,
+  shockwaveOnBeat: true,
+  sparkleOnTreble: true,
+  // 烟花触发：阈值 / 概率系数 / 冷却 / 单朵粒子数
+  sparkleThreshold: 0.07,    // treble 超过这个值才有可能触发
+  sparkleProb: 0.05,         // 触发概率系数（最终概率 = treble * sparkleProb）
+  sparkleCooldown: 0.3,      // 两朵烟花最小间隔（秒）
+  sparkleCount: 74,          // 单朵烟花粒子数
+  // 烟花外观与物理
+  sparkleSize: 1.0,          // 粒子尺寸倍率（×基础大小）
+  sparkleSpeed: 1.0,         // 初速倍率
+  sparkleLife: 180,          // 单朵生命（帧数）
+  sparkleGravity: 0.012,     // 重力（向下加速度）
+  sparkleStreakRatio: 0.12,  // 长尖粒子比例 0~1
+  cameraShake: false,
+  // 旋转
+  galaxyRotateSpeed: 0.9,
+  starsRotateSpeed: 0.9,
+  // 镜头
+  autoRotate: true,
+  autoRotateSpeed: 0.45,
+  // 中心核
+  coreOpacity: 0.7,
+  haloOpacity: 0.18,
+  // 全局
+  exposure: 0.33,
+  bgFog: 0.0008
+};
+
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = params.exposure;
+
+const gui = new GUI({ title: '', width: 280 });
+gui.close(); // 默认收起
+
+const fBloom = gui.addFolder('💫 Bloom 辉光');
+fBloom.add(params, 'bloomStrength', 0, 3, 0.01).name('强度 strength').onChange(v => bloomPass.strength = v);
+fBloom.add(params, 'bloomRadius', 0, 2, 0.01).name('半径 radius').onChange(v => bloomPass.radius = v);
+fBloom.add(params, 'bloomThreshold', 0, 1, 0.01).name('阈值 threshold').onChange(v => bloomPass.threshold = v);
+fBloom.add(params, 'bloomBeatBoost', 0, 2, 0.01).name('鼓点加成');
+
+const fParticle = gui.addFolder('✨ 粒子尺寸');
+fParticle.add(params, 'galaxySize', 0.3, 4, 0.05).name('星系点大小').onChange(v => galaxyMat.uniforms.uBaseSize.value = v);
+fParticle.add(params, 'galaxyOpacity', 0.1, 1, 0.01).name('星系不透明').onChange(v => galaxyMat.uniforms.uOpacity.value = v);
+fParticle.add(params, 'starSize', 0.3, 4, 0.05).name('背景星大小').onChange(v => starMat.uniforms.uBaseSize.value = v);
+fParticle.add(params, 'starOpacity', 0.1, 1, 0.01).name('背景星不透明').onChange(v => starMat.uniforms.uOpacity.value = v);
+fParticle.add(params, 'floatSize', 0.5, 6, 0.05).name('漂浮粒大小').onChange(v => floatMat.uniforms.uBaseSize.value = v);
+fParticle.add(params, 'floatOpacity', 0.1, 1, 0.01).name('漂浮粒不透明').onChange(v => floatMat.uniforms.uOpacity.value = v);
+fParticle.add({ coldShift: 0 }, 'coldShift', 0, 1, 0.01).name('🧊 冷蓝偏移').onChange(v => {
+  galaxyMat.uniforms.uColdShift.value = v;
+  floatMat.uniforms.uColdShift.value = v;
+});
+
+const fAudio = gui.addFolder('🥁 音频响应');
+fAudio.add(params, 'beatPulseGain', 0, 0.6, 0.01).name('鼓点脉冲');
+fAudio.add(params, 'shockwaveOnBeat').name('鼓点冲击波');
+fAudio.add(params, 'shockwaveOpacity', 0, 1, 0.01).name('冲击波亮度');
+fAudio.add(params, 'cameraShake').name('画面震动');
+fAudio.add(params, 'galaxyRotateSpeed', 0, 4, 0.05).name('星系转速');
+fAudio.add(params, 'starsRotateSpeed', 0, 3, 0.05).name('星场转速');
+
+// 🎆 烟花专属面板
+const fSparkle = gui.addFolder('🎆 烟花触发');
+fSparkle.add(params, 'sparkleOnTreble').name('启用高频烟花');
+fSparkle.add(params, 'sparkleThreshold', 0, 1, 0.01).name('触发阈值 threshold');
+fSparkle.add(params, 'sparkleProb', 0, 1, 0.01).name('触发概率系数');
+fSparkle.add(params, 'sparkleCooldown', 0, 5, 0.05).name('冷却间隔(秒)');
+fSparkle.add(params, 'sparkleCount', 5, 200, 1).name('单朵粒子数');
+fSparkle.add(params, 'sparkleSize', 0.2, 3, 0.05).name('粒子大小×');
+fSparkle.add(params, 'sparkleSpeed', 0.2, 3, 0.05).name('初速×');
+fSparkle.add(params, 'sparkleLife', 30, 400, 1).name('生命(帧)');
+fSparkle.add(params, 'sparkleGravity', 0, 0.1, 0.001).name('重力');
+fSparkle.add(params, 'sparkleStreakRatio', 0, 0.6, 0.01).name('长尖比例');
+fSparkle.add({ test: () => spawnSparkleBurst() }, 'test').name('🎇 立即来一朵');
+
+const fCam = gui.addFolder('🎥 镜头');
+fCam.add(params, 'autoRotate').name('自动绕飞').onChange(v => controls.autoRotate = v);
+fCam.add(params, 'autoRotateSpeed', 0, 3, 0.05).name('绕飞速度').onChange(v => controls.autoRotateSpeed = v);
+fCam.add({ reset: () => { camera.position.set(0, 60, 320); controls.target.set(0, 0, 0); } }, 'reset').name('🔄 复位视角');
+
+const fGlobal = gui.addFolder('🌐 全局');
+fGlobal.add(params, 'exposure', 0.2, 2, 0.01).name('曝光 exposure').onChange(v => renderer.toneMappingExposure = v);
+fGlobal.add(params, 'bgFog', 0, 0.003, 0.0001).name('雾浓度').onChange(v => scene.fog.density = v);
+fGlobal.add(params, 'coreOpacity', 0, 1, 0.01).name('中心核亮度').onChange(v => coreMat.uniforms.uOpacity.value = v);
+fGlobal.add(params, 'haloOpacity', 0, 1, 0.01).name('光晕亮度').onChange(v => haloMat.uniforms.uOpacity.value = v);
+fGlobal.add({ preset_calm: () => applyPreset('calm') }, 'preset_calm').name('🌙 治愈预设');
+fGlobal.add({ preset_default: () => applyPreset('default') }, 'preset_default').name('💜 默认预设');
+fGlobal.add({ preset_party: () => applyPreset('party') }, 'preset_party').name('🎉 蹦迪预设');
+
+function applyPreset(name) {
+  const presets = {
+    calm: { bloomStrength: 0.3, bloomRadius: 0.5, galaxySize: 0.8, galaxyOpacity: 0.7, beatPulseGain: 0.08, autoRotateSpeed: 0.25, exposure: 0.85 },
+    default: { bloomStrength: 0.23, bloomRadius: 0.47, galaxySize: 1.0, galaxyOpacity: 0.85, beatPulseGain: 0.11, autoRotateSpeed: 0.45, exposure: 0.33 },
+    party: { bloomStrength: 1.2, bloomRadius: 0.8, galaxySize: 1.5, galaxyOpacity: 1.0, beatPulseGain: 0.35, autoRotateSpeed: 1.0, exposure: 1.15 }
+  };
+  Object.assign(params, presets[name]);
+  bloomPass.strength = params.bloomStrength;
+  bloomPass.radius = params.bloomRadius;
+  galaxyMat.uniforms.uBaseSize.value = params.galaxySize;
+  galaxyMat.uniforms.uOpacity.value = params.galaxyOpacity;
+  controls.autoRotateSpeed = params.autoRotateSpeed;
+  renderer.toneMappingExposure = params.exposure;
+  gui.controllersRecursive().forEach(c => c.updateDisplay());
+}
+let audioCtx = null, analyser = null, freqData = null;
+const BAND = { bassEnd: 10, midEnd: 93, trebleEnd: 372 };
+let bass = 0, mid = 0, treble = 0, energy = 0;
+let beatHold = 0, beatNow = false;
+const bassHistory = [];
+let mood = 0;
+
+async function startAudio() {
+  // 🎵 直接挂网易云的 <audio> 元素到 AnalyserNode 上做 FFT 分析
+  // 不再需要前置的屏幕音频授权啦～
+  if (analyser) return; // 已经初始化过
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaElementSource(audio);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.78;
+    // 关键：既要给 analyser 分析，也要接到 destination 让人耳能听见
+    source.connect(analyser);
+    source.connect(audioCtx.destination);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+
+    statusBadge.classList.add('ok');
+    statusText.textContent = '🎧 正在聆听音乐';
+    energyBadge.style.display = '';
+  } catch (err) {
+    console.error('[audio] init failed:', err);
+    toast('😢 音频分析初始化失败：' + (err.message || err.name));
+  }
+}
+
+function analyzeAudio() {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(freqData);
+  let bs = 0, bsCnt = 0, md = 0, mdCnt = 0, tb = 0, tbCnt = 0;
+  for (let i = 1; i < BAND.trebleEnd && i < freqData.length; i++) {
+    const v = freqData[i];
+    if (i < BAND.bassEnd) { bs += v; bsCnt++; }
+    else if (i < BAND.midEnd) { md += v; mdCnt++; }
+    else { tb += v; tbCnt++; }
+  }
+  bass = bsCnt ? bs / bsCnt / 255 : 0;
+  mid = mdCnt ? md / mdCnt / 255 : 0;
+  treble = tbCnt ? tb / tbCnt / 255 : 0;
+  energy = (bass * 1.2 + mid + treble * 0.8) / 3;
+
+  bassHistory.push(bass);
+  if (bassHistory.length > 43) bassHistory.shift();
+  const bassEMA = bassHistory.reduce((a, b) => a + b, 0) / bassHistory.length;
+  const beatThreshold = bassEMA * 1.35 + 0.05;
+  beatNow = false;
+  if (bass > beatThreshold && beatHold <= 0) {
+    beatNow = true;
+    beatHold = 8;
+  }
+  beatHold--;
+
+  mood += (energy - mood) * 0.02;
+
+  energyText.textContent = `能量 ${Math.round(energy * 100)}`;
+  bassVal.textContent = Math.round(bass * 100);
+  midVal.textContent = Math.round(mid * 100);
+  trebleVal.textContent = Math.round(treble * 100);
+  if (beatNow) {
+    statusBadge.classList.add('beat');
+    setTimeout(() => statusBadge.classList.remove('beat'), 120);
+    beatVal.textContent = '💥';
+    setTimeout(() => { beatVal.textContent = '--'; }, 200);
+  }
+}
+
+// ============= 螺旋星系动画（CPU 更新位置 + 鼓点脉冲） =============
+let beatPulse = 0;
+function updateGalaxy(t) {
+  const pos = galaxyGeo.attributes.position.array;
+  const baseRotSpeed = (0.0008 + mid * 0.005) * params.galaxyRotateSpeed;
+  for (let i = 0; i < GALAXY_COUNT; i++) {
+    gAngle[i] += baseRotSpeed * (1 + (1 / (gRadius[i] / 100 + 0.5)) * 0.3);
+    const radiusMod = 1 + beatPulse * params.beatPulseGain * (1 - gRadius[i] / 220);
+    const r = gRadius[i] * radiusMod;
+    const wobble = Math.sin(t * 0.001 + gPhase[i]) * (1 + treble * 4);
+    pos[i*3]   = Math.cos(gAngle[i]) * r + Math.cos(gPhase[i]) * wobble * 0.8;
+    pos[i*3+1] = gOrig[i*3+1] * radiusMod + Math.sin(t * 0.0015 + gPhase[i]) * (2 + mid * 6);
+    pos[i*3+2] = Math.sin(gAngle[i]) * r + Math.sin(gPhase[i]) * wobble * 0.8;
+  }
+  galaxyGeo.attributes.position.needsUpdate = true;
+  galaxyMat.uniforms.uBaseSize.value = params.galaxySize + treble * 0.6 + beatPulse * 0.3;
+  galaxyMat.uniforms.uTime.value = elapsed;
+  galaxyMat.uniforms.uTwinkle.value = treble * 1.2;
+  beatPulse *= 0.9;
+}
+
+function updateFloaters(t) {
+  const pos = floatGeo.attributes.position.array;
+  for (let i = 0; i < FLOAT_COUNT; i++) {
+    fPhase[i] += 0.01 + mid * 0.04;
+    pos[i*3]   += Math.cos(fPhase[i]) * (0.2 + mid * 1.2);
+    pos[i*3+1] += Math.sin(fPhase[i] * 1.3) * (0.15 + mid * 0.8);
+    pos[i*3+2] += Math.sin(fPhase[i] * 0.7) * (0.2 + mid * 1.2);
+    if (beatNow) {
+      const dx = pos[i*3], dy = pos[i*3+1], dz = pos[i*3+2];
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1;
+      const f = bass * 6 / Math.max(d / 100, 0.5);
+      pos[i*3]   += (dx/d) * f;
+      pos[i*3+1] += (dy/d) * f;
+      pos[i*3+2] += (dz/d) * f;
+    }
+    const r = Math.hypot(pos[i*3], pos[i*3+2]);
+    if (r > 380 || r < 60 || Math.abs(pos[i*3+1]) > 100) {
+      const nr = 100 + Math.random() * 200;
+      const a = Math.random() * Math.PI * 2;
+      pos[i*3]   = Math.cos(a) * nr;
+      pos[i*3+1] = (Math.random() - 0.5) * 30;
+      pos[i*3+2] = Math.sin(a) * nr;
+    }
+  }
+  floatGeo.attributes.position.needsUpdate = true;
+}
+
+// ============= 主循环 =============
+const clock = new THREE.Clock();
+let elapsed = 0;
+let shake = 0;
+let lastSparkleAt = -Infinity; // 上一次烟花的时间戳（秒）
+function loop() {
+  const dt = clock.getDelta();
+  elapsed += dt;
+  const t = elapsed * 1000;
+
+  analyzeAudio();
+
+  if (beatNow) {
+    beatPulse = Math.min(beatPulse + 1.0, 1.5);
+    if (params.shockwaveOnBeat) spawnShockwave(bass);
+    if (params.cameraShake && bass > 0.45) shake = Math.min(shake + bass * 0.4, 1.0);
+  }
+  if (params.sparkleOnTreble && treble > params.sparkleThreshold
+      && Math.random() < treble * params.sparkleProb
+      && (elapsed - lastSparkleAt) > params.sparkleCooldown) {
+    spawnSparkleBurst();
+    lastSparkleAt = elapsed;
+  }
+
+  updateGalaxy(t);
+  updateFloaters(t);
+  updateShockwaves();
+  updateSparkles();
+
+  // 鼠标 OrbitControls 接管镜头（含自动绕飞 if enabled）
+  controls.update();
+
+  // 屏震：通过摄像机位置微抖（不破坏 OrbitControls 的 target）
+  if (shake > 0.001) {
+    const sx = (Math.random() - 0.5) * shake * 4;
+    const sy = (Math.random() - 0.5) * shake * 4;
+    camera.position.x += sx;
+    camera.position.y += sy;
+    shake *= 0.85;
+  }
+
+  // 中心核心呼吸（驱动 shader uniforms）
+  const coreScale = 1 + bass * 1.0 + beatPulse * 0.4;
+  core.scale.setScalar(coreScale);
+  halo.scale.setScalar(coreScale * 1.4);
+  coreMat.uniforms.uTime.value = elapsed;
+  coreMat.uniforms.uIntensity.value = 1.0 + bass * 0.6 + beatPulse * 0.5;
+  coreMat.uniforms.uOpacity.value = params.coreOpacity + treble * 0.2;
+  haloMat.uniforms.uTime.value = elapsed;
+  haloMat.uniforms.uOpacity.value = params.haloOpacity + bass * 0.35;
+
+  // Bloom 强度随鼓点（基于 GUI 基准 + 加成）
+  bloomPass.strength = params.bloomStrength + (bass * 0.6 + beatPulse * params.bloomBeatBoost);
+  bloomPass.radius = params.bloomRadius + mid * 0.2;
+
+  // 整体星场缓慢旋转
+  stars.rotation.y += 0.0003 * params.starsRotateSpeed;
+  stars.rotation.x += 0.0001 * params.starsRotateSpeed;
+
+  particleVal.textContent = (GALAXY_COUNT + STAR_COUNT + FLOAT_COUNT).toLocaleString();
+
+  composer.render();
+  requestAnimationFrame(loop);
+}
+loop();
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  bloomPass.setSize(w, h);
+});
+
+// ============================================================
+// 🎵 网易云音乐 · 方案 B 完整版（NeteaseCloudMusicApi 本地服务）
+// 后端：http://localhost:3000  （需先 `npx NeteaseCloudMusicApi`）
+// 音频：HTML5 <audio>，currentTime 直接驱动歌词同步（精度 ±50ms）
+// ============================================================
+const NCM_API = 'http://localhost:3000';
+
+const neteaseCard       = document.getElementById('neteaseCard');
+const neteaseCoverEl    = document.getElementById('neteaseCover');
+const neteaseTitleEl    = document.getElementById('neteaseTitle');
+const neteaseArtistEl   = document.getElementById('neteaseArtist');
+const neteaseProgressBar= document.getElementById('neteaseProgressBar');
+const neteaseTimeEl     = document.getElementById('neteaseTime');
+const neteasePlayBtn    = document.getElementById('neteasePlay');
+const neteasePrevBtn    = document.getElementById('neteasePrev');
+const neteaseNextBtn    = document.getElementById('neteaseNext');
+const neteaseSearchBtn  = document.getElementById('neteaseSearch');
+const neteasePlaylistBtn= document.getElementById('neteasePlaylist');
+const neteaseLoginBtn   = document.getElementById('neteaseLogin');
+
+const lyricBar          = document.getElementById('lyricBar');
+const lyricCurrentEl    = document.getElementById('lyricCurrent');
+const lyricNextEl       = document.getElementById('lyricNext');
+
+const modalMask         = document.getElementById('modalMask');
+const modalTitle        = document.getElementById('modalTitle');
+const modalSearchRow    = document.getElementById('modalSearchRow');
+const modalSearchInput  = document.getElementById('modalSearchInput');
+const modalSearchBtn    = document.getElementById('modalSearchBtn');
+const modalList         = document.getElementById('modalList');
+const modalClose        = document.getElementById('modalClose');
+
+const loginMask         = document.getElementById('loginMask');
+const loginQR           = document.getElementById('loginQR');
+const loginStatusEl     = document.getElementById('loginStatus');
+const loginCloseBtn     = document.getElementById('loginClose');
+
+// ============= 状态 =============
+const audio = new Audio();
+audio.crossOrigin = 'anonymous'; // 让 FFT 也能用上
+audio.preload = 'auto';
+let playlist = [];      // 当前播放队列 [{ id, name, artist, cover }]
+let currentIdx = -1;
+let lyricLines = [];    // [{ time, text }]
+let currentLyricIdx = -1;
+
+// ============= API 调用工具 =============
+async function api(path, params = {}) {
+  const u = new URL(NCM_API + path);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) u.searchParams.set(k, v);
+  });
+  // 加时间戳防缓存
+  u.searchParams.set('timestamp', Date.now());
+  const resp = await fetch(u.toString(), { credentials: 'include' });
+  if (!resp.ok) throw new Error(`API ${path} ${resp.status}`);
+  return resp.json();
+}
+
+async function checkBackend() {
+  try {
+    // 用真实 API 端点做健康检查（根路径 / 返回的是文档页面，没有 CORS 头）
+    const r = await api('/song/url', { id: 347230 });
+    return r && r.code === 200;
+  } catch (e) {
+    console.warn('[NCM] backend check failed:', e);
+    return false;
+  }
+}
+
+// ============= LRC 解析 =============
+function parseLRC(lrc) {
+  if (!lrc) return [];
+  const lines = lrc.split(/\r?\n/);
+  const re = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
+  const out = [];
+  for (const ln of lines) {
+    const text = ln.replace(re, '').trim();
+    if (!text) continue;
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(ln)) !== null) {
+      const t = parseInt(m[1], 10) * 60 + parseFloat(m[2]);
+      out.push({ time: t, text });
+    }
+  }
+  out.sort((a, b) => a.time - b.time);
+  return out;
+}
+
+// ============= 时间格式化 =============
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+
+// ============= 加载并播放歌曲 =============
+async function playByIndex(idx) {
+  if (idx < 0 || idx >= playlist.length) return;
+  currentIdx = idx;
+  const song = playlist[idx];
+  neteaseTitleEl.textContent = '加载中…';
+  neteaseArtistEl.textContent = song.name;
+
+  try {
+    // 1. 拿音频 URL
+    const urlResp = await api('/song/url', { id: song.id });
+    const audioUrl = urlResp?.data?.[0]?.url;
+    if (!audioUrl) {
+      toast('😢 此歌曲无法播放（VIP/版权）');
+      return;
+    }
+
+    // 2. 拿详细信息（封面）
+    if (!song.cover) {
+      const detail = await api('/song/detail', { ids: song.id });
+      const sd = detail?.songs?.[0];
+      if (sd) {
+        song.cover = sd.al?.picUrl;
+        song.name = song.name || sd.name;
+        song.artist = song.artist || (sd.ar || []).map(a => a.name).join(' / ');
+      }
+    }
+
+    // 3. 拿歌词
+    const lyricResp = await api('/lyric', { id: song.id });
+    lyricLines = parseLRC(lyricResp?.lrc?.lyric || '');
+
+    // 4. 渲染 UI
+    neteaseTitleEl.textContent = song.name;
+    neteaseArtistEl.textContent = song.artist || '未知歌手';
+    if (song.cover) neteaseCoverEl.style.backgroundImage = `url("${song.cover}")`;
+
+    if (lyricLines.length > 0) {
+      lyricBar.classList.remove('hidden');
+      lyricCurrentEl.textContent = '♪';
+      lyricNextEl.textContent = lyricLines[0]?.text || '';
+    } else {
+      lyricBar.classList.remove('hidden');
+      lyricCurrentEl.textContent = '♪ 这首是纯音乐，没有歌词哦';
+      lyricNextEl.textContent = '';
+    }
+    currentLyricIdx = -1;
+
+    // 5. 播放
+    audio.src = audioUrl;
+    try {
+      await audio.play();
+      neteaseCard.classList.add('playing');
+      neteasePlayBtn.textContent = '⏸';
+      toast(`🎶 ${song.name}`);
+    } catch (e) {
+      console.error(e);
+      toast('▶ 点一下播放按钮启动音频');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('😢 加载失败：' + e.message);
+  }
+}
+
+function playNext() { playByIndex((currentIdx + 1) % Math.max(playlist.length, 1)); }
+function playPrev() { playByIndex((currentIdx - 1 + playlist.length) % Math.max(playlist.length, 1)); }
+
+// audio 事件
+audio.addEventListener('play', () => {
+  // 首次播放时自动初始化 FFT 分析器（必须在用户手势触发的播放回调里调用）
+  startAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  neteaseCard.classList.add('playing');
+  neteasePlayBtn.textContent = '⏸';
+});
+audio.addEventListener('pause', () => {
+  neteaseCard.classList.remove('playing');
+  neteasePlayBtn.textContent = '▶';
+});
+audio.addEventListener('ended', () => playNext());
+audio.addEventListener('timeupdate', updatePlaybackUI);
+
+function updatePlaybackUI() {
+  const cur = audio.currentTime || 0;
+  const dur = audio.duration || 0;
+  neteaseTimeEl.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+  neteaseProgressBar.style.setProperty('--progress', dur ? `${(cur / dur) * 100}%` : '0%');
+  updateLyric(cur);
+}
+
+function updateLyric(t) {
+  if (lyricLines.length === 0) return;
+  let lo = 0, hi = lyricLines.length - 1, idx = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lyricLines[mid].time <= t) { idx = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  if (idx !== currentLyricIdx) {
+    currentLyricIdx = idx;
+    const cur = idx >= 0 ? lyricLines[idx].text : '♪';
+    const next = idx + 1 < lyricLines.length ? lyricLines[idx + 1].text : '';
+    lyricCurrentEl.textContent = cur || '♪';
+    lyricNextEl.textContent = next;
+  }
+  if (typeof beatNow !== 'undefined' && beatNow) {
+    lyricCurrentEl.classList.add('beat');
+    setTimeout(() => lyricCurrentEl.classList.remove('beat'), 180);
+  }
+}
+
+// ============= 进度条点击跳转 =============
+neteaseProgressBar.addEventListener('click', (e) => {
+  if (!audio.duration) return;
+  const rect = neteaseProgressBar.getBoundingClientRect();
+  const ratio = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = audio.duration * Math.max(0, Math.min(1, ratio));
+});
+
+// ============= 播放/暂停/上下首 =============
+neteasePlayBtn.addEventListener('click', async () => {
+  if (!audio.src) {
+    // 还没歌 → 打开搜索
+    openSearch();
+    return;
+  }
+  if (audio.paused) await audio.play().catch(e => toast('播放失败：' + e.message));
+  else audio.pause();
+});
+neteaseNextBtn.addEventListener('click', playNext);
+neteasePrevBtn.addEventListener('click', playPrev);
+
+// ============= 搜索模态框 =============
+function openModal() { modalMask.classList.remove('hidden'); }
+function closeModal() { modalMask.classList.add('hidden'); }
+
+async function openSearch() {
+  modalTitle.textContent = '🔍 搜索歌曲';
+  modalSearchRow.style.display = '';
+  modalList.innerHTML = '<div class="modalEmpty">输入关键词后按回车～</div>';
+  openModal();
+  setTimeout(() => modalSearchInput.focus(), 100);
+}
+
+async function doSearch() {
+  const kw = modalSearchInput.value.trim();
+  if (!kw) return;
+  modalList.innerHTML = '<div class="modalEmpty">搜索中…</div>';
+  try {
+    const r = await api('/cloudsearch', { keywords: kw, limit: 30 });
+    const songs = r?.result?.songs || [];
+    if (songs.length === 0) {
+      modalList.innerHTML = '<div class="modalEmpty">😕 没找到相关歌曲</div>';
+      return;
+    }
+    renderSongList(songs.map(s => ({
+      id: s.id,
+      name: s.name,
+      artist: (s.ar || []).map(a => a.name).join(' / '),
+      cover: s.al?.picUrl,
+      fee: s.fee,  // 1=VIP 0=免费
+    })));
+  } catch (e) {
+    modalList.innerHTML = `<div class="modalEmpty">😢 搜索失败：${e.message}</div>`;
+  }
+}
+
+function renderSongList(songs) {
+  modalList.innerHTML = '';
+  songs.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'modalRow';
+    row.innerHTML = `
+      <div class="modalRowCover" style="background-image:url('${s.cover || ''}')"></div>
+      <div class="modalRowText">
+        <div class="modalRowTitle">${escapeHTML(s.name)}</div>
+        <div class="modalRowSub">${escapeHTML(s.artist || '')}</div>
+      </div>
+      ${s.fee === 1 ? '<div class="modalRowBadge">VIP</div>' : ''}
+    `;
+    row.addEventListener('click', () => {
+      // 把搜索结果作为新的播放队列
+      playlist = songs;
+      playByIndex(i);
+      closeModal();
+    });
+    modalList.appendChild(row);
+  });
+}
+
+function escapeHTML(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+modalSearchBtn.addEventListener('click', doSearch);
+modalSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') doSearch();
+});
+modalClose.addEventListener('click', closeModal);
+modalMask.addEventListener('click', (e) => { if (e.target === modalMask) closeModal(); });
+
+// ============= 我的歌单 =============
+neteaseSearchBtn.addEventListener('click', openSearch);
+neteasePlaylistBtn.addEventListener('click', async () => {
+  modalTitle.textContent = '📃 我的歌单';
+  modalSearchRow.style.display = 'none';
+  modalList.innerHTML = '<div class="modalEmpty">加载中…</div>';
+  openModal();
+  try {
+    const status = await api('/login/status');
+    const uid = status?.data?.profile?.userId;
+    if (!uid) {
+      modalList.innerHTML = '<div class="modalEmpty">😶 未登录，请先 👤 扫码登录</div>';
+      return;
+    }
+    const r = await api('/user/playlist', { uid, limit: 50 });
+    const lists = r?.playlist || [];
+    if (lists.length === 0) {
+      modalList.innerHTML = '<div class="modalEmpty">😶 没有歌单</div>';
+      return;
+    }
+    modalList.innerHTML = '';
+    lists.forEach(pl => {
+      const row = document.createElement('div');
+      row.className = 'modalRow';
+      row.innerHTML = `
+        <div class="modalRowCover" style="background-image:url('${pl.coverImgUrl}')"></div>
+        <div class="modalRowText">
+          <div class="modalRowTitle">${escapeHTML(pl.name)}</div>
+          <div class="modalRowSub">${pl.trackCount} 首 · ${escapeHTML(pl.creator?.nickname || '')}</div>
+        </div>
+      `;
+      row.addEventListener('click', () => openPlaylist(pl.id, pl.name));
+      modalList.appendChild(row);
+    });
+  } catch (e) {
+    modalList.innerHTML = `<div class="modalEmpty">😢 ${e.message}</div>`;
+  }
+});
+
+async function openPlaylist(plId, plName) {
+  modalTitle.textContent = `🎵 ${plName}`;
+  modalList.innerHTML = '<div class="modalEmpty">加载中…</div>';
+  try {
+    const r = await api('/playlist/track/all', { id: plId, limit: 100 });
+    const songs = (r?.songs || []).map(s => ({
+      id: s.id,
+      name: s.name,
+      artist: (s.ar || []).map(a => a.name).join(' / '),
+      cover: s.al?.picUrl,
+      fee: s.fee,
+    }));
+    if (songs.length === 0) {
+      modalList.innerHTML = '<div class="modalEmpty">😶 歌单为空</div>';
+      return;
+    }
+    renderSongList(songs);
+  } catch (e) {
+    modalList.innerHTML = `<div class="modalEmpty">😢 ${e.message}</div>`;
+  }
+}
+
+// ============= 扫码登录 =============
+let loginPollTimer = null;
+neteaseLoginBtn.addEventListener('click', startLogin);
+loginCloseBtn.addEventListener('click', () => {
+  loginMask.classList.add('hidden');
+  if (loginPollTimer) { clearInterval(loginPollTimer); loginPollTimer = null; }
+});
+
+async function startLogin() {
+  loginMask.classList.remove('hidden');
+  loginStatusEl.textContent = '生成二维码…';
+  try {
+    const k = await api('/login/qr/key');
+    const key = k?.data?.unikey;
+    if (!key) throw new Error('生成 key 失败');
+    const qr = await api('/login/qr/create', { key, qrimg: true });
+    loginQR.src = qr?.data?.qrimg;
+    loginStatusEl.textContent = '请用网易云 App 扫码';
+    if (loginPollTimer) clearInterval(loginPollTimer);
+    loginPollTimer = setInterval(async () => {
+      try {
+        const s = await api('/login/qr/check', { key });
+        // 800 二维码过期 / 801 等待扫码 / 802 待确认 / 803 授权登录成功
+        if (s.code === 800) {
+          loginStatusEl.textContent = '😢 二维码过期，重开试试';
+          clearInterval(loginPollTimer); loginPollTimer = null;
+        } else if (s.code === 801) {
+          loginStatusEl.textContent = '🕐 等待扫码…';
+        } else if (s.code === 802) {
+          loginStatusEl.textContent = `📱 ${s.nickname} 已扫码，请在手机上确认`;
+        } else if (s.code === 803) {
+          loginStatusEl.textContent = '✅ 登录成功！';
+          clearInterval(loginPollTimer); loginPollTimer = null;
+          setTimeout(() => loginMask.classList.add('hidden'), 800);
+          toast('🎉 登录成功，可以打开「我的歌单」啦');
+        }
+      } catch (e) { /* ignore */ }
+    }, 2500);
+  } catch (e) {
+    loginStatusEl.textContent = '😢 ' + e.message;
+  }
+}
+
+// ============= 快捷键 =============
+document.addEventListener('keydown', (e) => {
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.code === 'Space' && audio.src) {
+    e.preventDefault();
+    if (audio.paused) audio.play(); else audio.pause();
+  } else if (e.code === 'ArrowRight' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    playNext();
+  } else if (e.code === 'ArrowLeft' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    playPrev();
+  }
+});
+
+// ============= 启动检查 =============
+checkBackend().then(ok => {
+  if (!ok) {
+    toast('⚠️ 后端未启动：请先跑 `npx NeteaseCloudMusicApi`');
+    neteaseTitleEl.textContent = '后端未启动';
+    neteaseArtistEl.textContent = 'npx NeteaseCloudMusicApi';
+  } else {
+    toast('🌌 网易云后端已连接');
+  }
+});
+</script>
+</body>
+</html>

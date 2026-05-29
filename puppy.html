@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐶 Puppy Chase · 小狗追指尖</title>
+  <style>
+    :root {
+      --bg: #0f0a14;
+      --fg: #fff5f0;
+      --accent: #ffb38a;
+      --accent2: #ffd6a5;
+      --muted: #b8a89a;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+      height: 100%;
+    }
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    #wrap {
+      --aspect-w: 2.35;
+      --aspect-h: 1;
+      position: relative;
+      width: min(100vw, calc(100vh * var(--aspect-w) / var(--aspect-h)));
+      height: min(100vh, calc(100vw * var(--aspect-h) / var(--aspect-w)));
+      max-width: 100vw;
+      max-height: 100vh;
+      overflow: hidden;
+      background: #000;
+      border-radius: 6px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+    video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      visibility: hidden;
+    }
+    canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      display: block;
+    }
+    #fxCanvas { pointer-events: none; }
+    #puppySprite {
+      position: absolute;
+      left: 50%;
+      top: 75%;
+      width: 13%;
+      height: auto;
+      z-index: 3;
+      pointer-events: none;
+      user-select: none;
+      image-rendering: auto;
+      --puppy-anchor-y: -55%;
+      --puppy-facing: 1;
+      transform: translate(-50%, var(--puppy-anchor-y)) scaleX(var(--puppy-facing));
+      transform-origin: 50% 55%;
+      will-change: left, top, width, transform;
+    }
+
+    .hud {
+      position: fixed;
+      top: 16px; left: 16px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(20, 12, 24, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,179,138,0.18);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content;
+    }
+    .badge .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ffb84d;
+      box-shadow: 0 0 10px #ffb84d;
+    }
+    .badge.ok .dot { background: #ffd6a5; box-shadow: 0 0 10px #ffd6a5; }
+
+    #panel {
+      position: fixed;
+      top: 16px; right: 16px;
+      z-index: 10;
+      width: 260px;
+      background: rgba(20, 12, 24, 0.7);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,179,138,0.18);
+      border-radius: 16px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.7;
+      pointer-events: auto;
+    }
+    #panelToggle {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-align: left;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    #panelToggle::after {
+      content: '展开';
+      float: right;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      -webkit-text-fill-color: var(--muted);
+    }
+    #panel:not(.collapsed) #panelToggle {
+      margin-bottom: 8px;
+    }
+    #panel:not(.collapsed) #panelToggle::after {
+      content: '收起';
+    }
+    #panel.collapsed #panelContent {
+      display: none;
+    }
+    #panel ul { margin: 0; padding-left: 18px; }
+    #panel li { margin-bottom: 4px; color: #ead7c8; }
+    #panel li b { color: #fff; }
+    #panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+    #moodTag {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(255, 179, 138, 0.18);
+      border: 1px solid rgba(255, 179, 138, 0.5);
+      color: #ffe6d2;
+      padding: 14px 31px;
+      border-radius: 999px;
+      font-size: 24px;
+      letter-spacing: 1.7px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #moodTag.show { opacity: 1; }
+
+    #loading {
+      position: fixed; inset: 0;
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 18px;
+      background: radial-gradient(circle at 50% 40%, #2a1f2e 0%, #0a0610 70%);
+      transition: opacity 0.5s ease;
+    }
+    #loading.hide { opacity: 0; pointer-events: none; }
+    .loader-card {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      padding: 28px 36px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 18px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      min-width: 260px;
+    }
+    .magic-emoji {
+      font-size: 48px;
+      animation: wiggle 1.2s ease-in-out infinite;
+      filter: drop-shadow(0 0 10px rgba(255,179,138,0.6));
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-8deg) scale(1); }
+      50% { transform: rotate(10deg) scale(1.06); }
+    }
+    .loader-title {
+      font-size: 16px; font-weight: 600; color: #fff; letter-spacing: 0.5px;
+    }
+    .loader-step {
+      font-size: 13px; color: var(--muted); text-align: center; min-height: 18px;
+    }
+    .progress-track {
+      width: 240px; height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px; overflow: hidden;
+      position: relative;
+    }
+    .progress-bar {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 999px;
+      box-shadow: 0 0 12px rgba(255,179,138,0.6);
+      transition: width 0.4s ease;
+    }
+    .loader-tip {
+      font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="fxCanvas"></canvas>
+      <img id="puppySprite" src="gif/开心哼歌.gif" alt="小狗" />
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">摄像头初始化中…</span></div>
+    <div class="badge" id="moodBadge"><span class="dot"></span><span id="moodText">小狗在等你 🐶</span></div>
+  </div>
+
+  <div id="panel" class="collapsed">
+    <button id="panelToggle" type="button" aria-expanded="false" aria-controls="panelContent">🐶 玩法说明</button>
+    <div id="panelContent">
+      <ul>
+        <li>伸出 <b>食指 ☝️</b>，让小狗看到你</li>
+        <li>移动指尖，小狗会 <b>追着跑</b></li>
+        <li>停下来不动，小狗会 <b>嗅嗅闻闻</b></li>
+        <li>指尖太靠近它，小狗会 <b>兴奋打转</b></li>
+        <li>看不到手时，小狗会 <b>坐下等你</b></li>
+      </ul>
+      <div class="small">提示：保持距离 0.5–1.5m，光线充足效果最佳～</div>
+    </div>
+  </div>
+
+  <div id="moodTag"></div>
+
+  <div id="loading">
+    <div class="loader-card">
+      <div class="magic-emoji">🐶</div>
+      <div class="loader-title">小狗正在赶来…</div>
+      <div class="loader-step" id="loaderStep">连接 AI 模型中…</div>
+      <div class="progress-track"><div class="progress-bar" id="loaderBar"></div></div>
+      <div class="loader-tip">首次加载需下载约 13MB 模型，耐心等几秒哦 ✨</div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <script>
+    'use strict';
+
+    const video = document.getElementById('video');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const puppySpriteEl = document.getElementById('puppySprite');
+    const mctx = mainCanvas.getContext('2d');
+    const fctx = fxCanvas.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    const moodText = document.getElementById('moodText');
+    const moodBadge = document.getElementById('moodBadge');
+    const moodTag = document.getElementById('moodTag');
+    const loading = document.getElementById('loading');
+    const loaderStep = document.getElementById('loaderStep');
+    const loaderBar = document.getElementById('loaderBar');
+    const panel = document.getElementById('panel');
+    const panelToggle = document.getElementById('panelToggle');
+
+    panelToggle.addEventListener('click', () => {
+      const collapsed = panel.classList.toggle('collapsed');
+      panelToggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+
+    function setLoader(percent, text) {
+      if (loaderBar) loaderBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+      if (text && loaderStep) loaderStep.textContent = text;
+    }
+    setLoader(8, '加载脚本中…');
+
+
+    const state = {
+      width: 1280,
+      height: 720,
+      fingerTip: null,        // {x, y}（屏幕像素，已镜像）
+      lastFingerTip: null,
+      fingerVel: { x: 0, y: 0 },
+      fingerActive: false,
+      lastSeenTime: 0,
+      targetLostAt: 0,
+      particles: [],
+      bubbles: [],            // 汪汪气泡
+      lastMood: '',
+      playEvent: null,
+      spriteVariants: {},
+      nextRandomEventAt: 0,
+      randomEventCooldownUntil: 0,
+      fingerFresh: false,
+      closeInteractionStartedAt: 0,
+      lastCloseInteractionAt: 0,
+      tantrumCooldownUntil: 0,
+      previousTargetDistance: null,
+    };
+
+    // ====== 小狗：物理状态 ======
+    const puppy = {
+      x: 0, y: 0,             // 身体中心
+      vx: 0, vy: 0,
+      heading: 0,             // 朝向角度（弧度）
+      facing: 1,              // 朝左/朝右（用于翻身）
+      speed: 0,
+      bounce: 0,              // 跑动时上下颠簸 [0..1]
+      tailWag: 0,             // 尾巴摆动相位
+      earWag: 0,              // 耳朵摆动相位
+      blink: 0,               // 眨眼 [0=睁开, 1=闭眼]
+      blinkTimer: 0,
+      mood: 'sit',            // sit | run | sniff | excited | bored | lookAround
+      moodTimer: 0,
+      targetDistanceAvg: 999,
+      fingerSpeedAvg: 0,
+      sniffPhase: 0,
+      excitedPhase: 0,
+      sitPose: 0,             // 0..1 蹲下程度
+      scale: 1,
+    };
+
+    function resize() {
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      fxCanvas.width = state.width;
+      fxCanvas.height = state.height;
+    }
+
+    function flipX(x) { return 1 - x; }
+    function lmToPx(lm) {
+      return { x: flipX(lm.x) * state.width, y: lm.y * state.height };
+    }
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const clamp = (v, mn, mx) => Math.max(mn, Math.min(mx, v));
+    const pick = (items) => items[Math.floor(Math.random() * items.length)];
+
+    // 判断食指是否可跟踪：放宽手势要求，避免手指轻微弯曲就丢失。
+    function isPointing(lm) {
+      const wrist = lm[0];
+      const tip = lm[8];
+      const pip = lm[6];
+      const mcp = lm[5];
+      const indexReach = dist(tip, wrist);
+      const pipReach = dist(pip, wrist);
+      const tipFromMcp = dist(tip, mcp);
+      const pipFromMcp = dist(pip, mcp);
+      return indexReach > pipReach * 0.92 || tipFromMcp > pipFromMcp * 1.05;
+    }
+
+    // ====== MediaPipe Hands ======
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.4,
+      minTrackingConfidence: 0.25,
+    });
+    hands.onResults(onResults);
+
+    function onResults(results) {
+      if (!results.image) return;
+        if (results.image.width && results.image.width !== state.width) {
+        state.width = results.image.width;
+        state.height = results.image.height;
+        resize();
+        // 初始化小狗位置在中央偏下
+        if (puppy.x === 0 && puppy.y === 0) {
+          puppy.x = state.width * 0.5;
+          puppy.y = state.height * 0.75;
+        }
+      }
+      if (puppy.x === 0 && puppy.y === 0) {
+        puppy.x = state.width * 0.5;
+        puppy.y = state.height * 0.75;
+      }
+
+      let tip = null;
+      let pointing = false;
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const lm = results.multiHandLandmarks[0];
+        tip = lmToPx(lm[8]);
+        // 只要手被识别到就跟踪食指尖，避免姿势不标准时频繁丢目标。
+        pointing = isPointing(lm) || !!tip;
+      }
+
+      if (pointing && tip) {
+        state.fingerFresh = true;
+        if (state.fingerTip) {
+          state.fingerVel.x = tip.x - state.fingerTip.x;
+          state.fingerVel.y = tip.y - state.fingerTip.y;
+        } else {
+          state.fingerVel.x = 0; state.fingerVel.y = 0;
+        }
+        state.lastFingerTip = state.fingerTip;
+        state.fingerTip = tip;
+        state.fingerActive = true;
+        state.lastSeenTime = performance.now();
+      } else {
+        state.fingerFresh = false;
+        // 短暂丢失只保留一小段时间，避免小狗追着旧手指点发呆。
+        if (performance.now() - state.lastSeenTime > 150) {
+          state.fingerActive = false;
+          state.fingerTip = null;
+          state.fingerVel.x = 0;
+          state.fingerVel.y = 0;
+        }
+      }
+
+      drawBackdrop(results.image);
+      updatePuppy();
+      drawPuppy();
+      drawFingerMark();
+      updateAndDrawParticles();
+      updateAndDrawBubbles();
+    }
+
+    // ====== 背景绘制：彩色摄像头帧由 canvas 镜像绘制 ======
+    function drawBackdrop(image) {
+      const w = state.width, h = state.height;
+      mctx.save();
+      mctx.translate(w, 0);
+      mctx.scale(-1, 1);
+      mctx.filter = 'none';
+      mctx.drawImage(image, 0, 0, w, h);
+      mctx.restore();
+    }
+
+    // ====== 食指尖标记：点+涟漪 ======
+    function drawFingerMark() {
+      if (!state.fingerActive || !state.fingerTip) return;
+      const t = performance.now() / 1000;
+      const x = state.fingerTip.x, y = state.fingerTip.y;
+      mctx.save();
+      // 涟漪
+      for (let i = 0; i < 3; i++) {
+        const phase = (t * 1.4 + i * 0.33) % 1;
+        const r = 12 + phase * 36;
+        mctx.beginPath();
+        mctx.arc(x, y, r, 0, Math.PI * 2);
+        mctx.strokeStyle = `rgba(255, 200, 160, ${0.35 * (1 - phase)})`;
+        mctx.lineWidth = 2;
+        mctx.stroke();
+      }
+      // 中心小光点
+      mctx.fillStyle = '#fff';
+      mctx.shadowColor = '#ffb38a';
+      mctx.shadowBlur = 18;
+      mctx.beginPath();
+      mctx.arc(x, y, 6, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.restore();
+    }
+
+    // ====== 小狗状态机 & 物理 ======
+    function updatePuppy() {
+      const now = performance.now();
+      const dt = 1 / 60; // 简化：固定步长
+
+      // 决定目标
+      let target = null;
+      let fingerSpeed = 0;
+      if (state.fingerActive && state.fingerTip) {
+        target = state.fingerTip;
+        fingerSpeed = Math.hypot(state.fingerVel.x, state.fingerVel.y);
+        state.targetLostAt = 0;
+      } else if (!state.targetLostAt) {
+        state.targetLostAt = now;
+      }
+
+      // 与目标的几何关系
+      let dx = 0, dy = 0, d = 0;
+      if (target) {
+        // 小狗喜欢停在指尖斜下方 40 像素处（跟着小狗尺寸缩小一起调小）
+        const offsetY = 40;
+        dx = target.x - puppy.x;
+        dy = (target.y + offsetY) - puppy.y;
+        d = Math.hypot(dx, dy);
+      }
+
+      if (target) {
+        puppy.targetDistanceAvg = lerp(puppy.targetDistanceAvg, d, 0.18);
+        puppy.fingerSpeedAvg = lerp(puppy.fingerSpeedAvg, fingerSpeed, 0.2);
+      } else {
+        puppy.targetDistanceAvg = lerp(puppy.targetDistanceAvg, 999, 0.08);
+        puppy.fingerSpeedAvg = lerp(puppy.fingerSpeedAvg, 0, 0.15);
+      }
+
+      const tantrumTriggered = updateTeaseTantrum(now, target, d, fingerSpeed);
+      if (target) state.previousTargetDistance = d;
+      else state.previousTargetDistance = null;
+
+      if (!tantrumTriggered) updateRandomEvents(now, target, d, fingerSpeed);
+
+      // 状态选择：用平滑值 + 最短停留时间，避免 GIF 在阈值边缘频繁切换。
+      let nextMood = puppy.mood;
+      if (!target) {
+        // 看不到手先保持原状态一会儿，不要马上切到无聊。
+        const lostSeconds = (now - state.targetLostAt) / 1000;
+        if (lostSeconds >= 3) {
+          if (puppy.mood !== 'bored') nextMood = 'bored';
+        }
+      } else {
+        const stableD = puppy.targetDistanceAvg;
+        const stableFingerSpeed = puppy.fingerSpeedAvg;
+        if (stableD < (puppy.mood === 'excited' ? 65 : 45)) {
+          nextMood = 'excited';
+        } else if (stableD < (puppy.mood === 'sniff' ? 140 : 115) && stableFingerSpeed < 7) {
+          nextMood = 'sniff';
+        } else {
+          nextMood = 'run';
+        }
+      }
+      if (state.playEvent?.type === 'tantrum') {
+        nextMood = puppy.mood;
+      }
+
+      if (nextMood !== puppy.mood && !canSwitchMood(nextMood, !!target)) {
+        nextMood = puppy.mood;
+      }
+
+      if (nextMood !== puppy.mood) {
+        puppy.mood = nextMood;
+        puppy.moodTimer = 0;
+        chooseSpriteVariant(nextMood);
+        showMood(nextMood);
+      } else {
+        puppy.moodTimer += dt;
+      }
+      const isCloseAndHappy = target && (puppy.mood === 'sniff' || puppy.mood === 'excited');
+      if (isCloseAndHappy) {
+        if (!state.closeInteractionStartedAt) state.closeInteractionStartedAt = now;
+        if (now - state.closeInteractionStartedAt >= 500) {
+          state.lastCloseInteractionAt = now;
+        }
+      } else if (target) {
+        state.closeInteractionStartedAt = 0;
+      }
+
+      moodBadge.classList.add('ok');
+      const visibleMood = state.playEvent?.type === 'tantrum' ? 'tantrum' : puppy.mood;
+      moodText.textContent = moodLabel(visibleMood);
+
+      // 行为驱动
+      let desiredSpeed = 0;
+      let accel = 0.9;
+      let damp = 0.86;
+
+      if (target) {
+        // 朝向目标
+        const angTo = Math.atan2(dy, dx);
+        // 朝向平滑
+        let da = angTo - puppy.heading;
+        while (da > Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        puppy.heading += da * 0.18;
+
+        // 决定脸朝向
+        puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+
+        if (state.playEvent?.type === 'orbit') {
+          puppy.excitedPhase += dt * 5.2;
+          const r = 58;
+          const orbitX = target.x + Math.cos(puppy.excitedPhase) * r;
+          const orbitY = target.y + 40 + Math.sin(puppy.excitedPhase) * r * 0.58;
+          const odx = orbitX - puppy.x;
+          const ody = orbitY - puppy.y;
+          puppy.vx += odx * 0.055;
+          puppy.vy += ody * 0.055;
+          puppy.heading = Math.atan2(ody, odx);
+          puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+          damp = 0.82;
+          desiredSpeed = -1;
+        }
+        else if (state.playEvent?.type === 'tantrum' || state.playEvent?.type === 'stopTantrum') {
+          damp = 0.78;
+          desiredSpeed = -1;
+        }
+        else if (puppy.mood === 'run') {
+          const distanceBoost = clamp((puppy.targetDistanceAvg - 90) / 260, 0, 1);
+          const speedBoost = clamp(puppy.fingerSpeedAvg / 28, 0, 1);
+          const chaseBoost = Math.max(distanceBoost, speedBoost);
+          desiredSpeed = 7 + chaseBoost * 11;
+          accel = 0.9 + chaseBoost * 0.9;
+          damp = 0.88 + chaseBoost * 0.05;
+        }
+        else if (puppy.mood === 'sniff') { desiredSpeed = 1.2; accel = 0.5; damp = 0.8; }
+        else if (puppy.mood === 'excited') {
+          // 围绕指尖打转
+          puppy.excitedPhase += dt * 6;
+          const r = 45;
+          const orbitX = target.x + Math.cos(puppy.excitedPhase) * r;
+          const orbitY = target.y + 40 + Math.sin(puppy.excitedPhase) * r * 0.6;
+          const odx = orbitX - puppy.x;
+          const ody = orbitY - puppy.y;
+          puppy.vx += odx * 0.06;
+          puppy.vy += ody * 0.06;
+          puppy.heading = Math.atan2(ody, odx);
+          puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+          damp = 0.82;
+          desiredSpeed = -1; // 跳过下面的常规驱动
+        }
+
+        if (desiredSpeed > 0) {
+          // 朝目标加速
+          const ux = dx / (d || 1);
+          const uy = dy / (d || 1);
+          puppy.vx += ux * accel;
+          puppy.vy += uy * accel;
+        }
+      } else {
+        // 没目标 → 慢慢减速
+        damp = 0.9;
+        // 看一看：左右摇头
+        puppy.heading = Math.sin(now / 700) * 0.5;
+        puppy.facing = Math.cos(puppy.heading) >= 0 ? 1 : -1;
+      }
+
+      // 限速
+      const sp = Math.hypot(puppy.vx, puppy.vy);
+      const maxSpeed = puppy.mood === 'run' ? 16 : (puppy.mood === 'excited' ? 12 : 8);
+      if (sp > maxSpeed) {
+        puppy.vx = puppy.vx / sp * maxSpeed;
+        puppy.vy = puppy.vy / sp * maxSpeed;
+      }
+      puppy.vx *= damp;
+      puppy.vy *= damp;
+      puppy.x += puppy.vx;
+      puppy.y += puppy.vy;
+      puppy.speed = Math.hypot(puppy.vx, puppy.vy);
+
+      // 边界吸附
+      const margin = 60;
+      puppy.x = clamp(puppy.x, margin, state.width - margin);
+      puppy.y = clamp(puppy.y, margin, state.height - margin);
+
+      // 颠簸（跑步时上下抖）
+      const stepFreq = puppy.mood === 'run' ? 18 : 10;
+      puppy.bounce = puppy.speed > 0.5 ? Math.sin(now / 1000 * stepFreq) : 0;
+
+      // 尾巴摆动：开心越快摆
+      let tailFreq = 4;
+      if (puppy.mood === 'excited') tailFreq = 18;
+      else if (puppy.mood === 'run') tailFreq = 14;
+      else if (puppy.mood === 'sit') tailFreq = 5;
+      puppy.tailWag += dt * tailFreq;
+
+      // 耳朵：跑/兴奋时飘动幅度大
+      puppy.earWag += dt * (puppy.speed * 0.6 + 2);
+
+      // 蹲下姿态
+      const targetSit = (puppy.mood === 'bored' || puppy.mood === 'lookAround') ? 1 : 0;
+      puppy.sitPose = lerp(puppy.sitPose, targetSit, 0.08);
+
+      // 嗅闻相位
+      if (puppy.mood === 'sniff') puppy.sniffPhase += dt * 8;
+
+      // 眨眼
+      puppy.blinkTimer -= dt;
+      if (puppy.blinkTimer <= 0) {
+        puppy.blink = 1;
+        puppy.blinkTimer = 2 + Math.random() * 2.5;
+      }
+      puppy.blink = Math.max(0, puppy.blink - dt * 8);
+
+      // 跑步扬起尘土
+      if (puppy.speed > 5 && Math.random() < 0.4) {
+        spawnDust(puppy.x - puppy.facing * 18, puppy.y + 28);
+      }
+      // 兴奋时撒爱心 / 汪汪
+      if (puppy.mood === 'excited' && Math.random() < 0.06) {
+        spawnHeart(puppy.x, puppy.y - 30);
+      }
+      if (puppy.mood === 'excited' && Math.random() < 0.025) {
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['汪!', '开心!', '贴贴!']));
+      } else if (puppy.mood === 'sniff' && Math.random() < 0.015) {
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['?', '闻闻~', '是你呀']));
+      } else if (puppy.mood === 'sit' && Math.random() < 0.005) {
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['哼哼~', '等你哦', '来玩嘛']));
+      } else if (puppy.mood === 'bored' && Math.random() < 0.005) {
+        spawnBubble(puppy.x + puppy.facing * 30, puppy.y - 175, pick(['等你好久啦...', '主人呢?', '有点无聊啦']));
+      }
+    }
+
+    function updateRandomEvents(now, target, distance, fingerSpeed) {
+      if (state.playEvent && now >= state.playEvent.until) {
+        state.playEvent = null;
+        state.randomEventCooldownUntil = now + 2200 + Math.random() * 2200;
+      }
+      if (state.playEvent || now < state.randomEventCooldownUntil) return;
+      if (!state.nextRandomEventAt) state.nextRandomEventAt = now + 1400 + Math.random() * 1800;
+      if (now < state.nextRandomEventAt) return;
+      state.nextRandomEventAt = now + 1200 + Math.random() * 1800;
+
+      if (target) {
+        if (distance < 95 && Math.random() < 0.32) {
+          spawnFlowerBurst(target.x, target.y);
+          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['送你小花!', '花花给你!', '最喜欢你啦!']));
+          state.randomEventCooldownUntil = now + 2600;
+          return;
+        }
+
+        if (distance < 150 && fingerSpeed < 5 && Math.random() < 0.26) {
+          state.playEvent = { type: 'orbit', until: now + 1800 };
+          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['绕一圈!', '转给你看!', '开心转圈圈!']));
+          return;
+        }
+
+        if (distance > 150 && Math.random() < 0.22) {
+          spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 183, pick(['等等我!', '别跑太快啦!', '我追我追!']));
+          state.randomEventCooldownUntil = now + 1800;
+          return;
+        }
+      } else if (state.targetLostAt && now - state.targetLostAt > 5200 && Math.random() < 0.28) {
+        spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 58, pick(['主人去哪啦?', '我在这里等你哦', '回来陪我玩嘛']));
+        state.randomEventCooldownUntil = now + 3600;
+      }
+    }
+
+    function updateTeaseTantrum(now, target, distance, fingerSpeed) {
+      const wasCloseRecently = state.lastCloseInteractionAt > 0 && now - state.lastCloseInteractionAt < 1800;
+      const canTantrum = wasCloseRecently && !state.playEvent && now >= state.tantrumCooldownUntil;
+      if (!canTantrum) return false;
+
+      const previousDistance = state.previousTargetDistance;
+      const pulledAway =
+        target &&
+        previousDistance !== null &&
+        previousDistance < 150 &&
+        distance > 185 &&
+        (distance - previousDistance > 45 || fingerSpeed > 18);
+      const suddenlyLost = !state.fingerFresh && now - state.lastSeenTime > 800;
+
+      if (!pulledAway && !suddenlyLost) return false;
+
+      state.playEvent = { type: 'tantrum', until: now + 1700 };
+      state.closeInteractionStartedAt = 0;
+      state.lastCloseInteractionAt = 0;
+      state.tantrumCooldownUntil = now + 8000 + Math.random() * 4000;
+      state.randomEventCooldownUntil = now + 2600;
+      spawnBubble(puppy.x + puppy.facing * 36, puppy.y - 283, pick([
+        '我都跑过来了，你怎么又跑啦！',
+        '刚要贴贴，你又溜走啦！',
+        '不许逗完小狗就跑！',
+      ]));
+      showMood('tantrum');
+      return true;
+    }
+
+    function canSwitchMood(nextMood, hasTarget) {
+      if (!hasTarget || puppy.mood === 'sit' || puppy.mood === 'bored' || puppy.mood === 'lookAround') return true;
+      const minStay = {
+        run: 0.7,
+        sniff: 0.9,
+        excited: 0.85,
+      };
+      return puppy.moodTimer >= (minStay[puppy.mood] ?? 0.5);
+    }
+
+    function moodLabel(m) {
+      switch (m) {
+        case 'run': return '🏃 全速追指尖！';
+        case 'sniff': return '👃 嗅嗅看看';
+        case 'excited': return '✨ 开心到转圈！';
+        case 'tantrum': return '🥺 被你逗急啦';
+        case 'sit': return '🎵 开心哼歌等你';
+        case 'bored': return '🐶 等到有点无聊啦';
+        case 'lookAround': return '👀 东张西望';
+        default: return '🐶';
+      }
+    }
+
+    function showMood(m) {
+      if (m === state.lastMood) return;
+      state.lastMood = m;
+      const excitedSprite = m === 'excited' ? selectedSpriteVariant('excited') : null;
+      const excitedTexts = excitedSprite?.src === 'gif/送你花花.gif'
+        ? ['🌸 送你花花！']
+        : ['✨ 见到你太开心啦！', '😆 开心到冒泡泡！'];
+      const map = {
+        run: ['🏃 我来啦！', '🏃 马上追到你啦！', '🐾 等等我呀！'],
+        sniff: ['👃 靠近一点闻闻你~', '👃 是熟悉的主人味道！', '🐶 我确认一下，是你！'],
+        excited: excitedTexts,
+        tantrum: ['我都跑过来了，你怎么又跑啦！', '刚要贴贴，你又溜走啦！', '不许逗完小狗就跑！'],
+        sit: ['🎵 我先哼着歌等你来玩', '🎵 今天也想和你玩', '🐶 我乖乖在这里等你'],
+        bored: ['🐶 等你好久啦，有点无聊了', '😴 主人怎么还不来呀', '🐾 我都快等困啦'],
+        lookAround: ['👀 主人去哪儿啦？', '👀 咦，人呢？', '🐶 我找找你在哪里'],
+      };
+      const t = Array.isArray(map[m]) ? pick(map[m]) : map[m];
+      if (!t) return;
+      moodTag.textContent = t;
+      moodTag.classList.add('show');
+      clearTimeout(showMood._t);
+      showMood._t = setTimeout(() => moodTag.classList.remove('show'), 1400);
+    }
+
+    // ====== 小狗绘制：GIF 状态动画 ======
+    // 下方手绘辅助函数暂时保留但不再调用，方便需要时回退。
+    const COLOR = {
+      bodyMain: '#f5d9a8',
+      bodyShade: '#d9b478',
+      patch: '#9c6b3f',
+      patchDark: '#6e4423',
+      belly: '#fff1d8',
+      nose: '#1a1014',
+      mouth: '#2a1a14',
+      eye: '#1a0d10',
+      eyeShine: '#ffffff',
+      tongue: '#ff7a8a',
+      tongueShade: '#d94f6a',
+      pawShadow: 'rgba(0,0,0,0.25)',
+    };
+
+    const PUPPY_SPRITE_CONFIG = {
+      sit: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
+      bored: { src: 'gif/无聊.gif', size: 210, anchorY: 0.52, naturalFacing: 1 },
+      lookAround: { src: 'gif/大脸贴近.gif', size: 140, anchorY: 0.52, naturalFacing: 1 },
+      run: { src: 'gif/开心跑过来.gif', size: 195, anchorY: 0.56, naturalFacing: -1 },
+      sniff: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
+      excited: {
+        variants: [
+          { src: 'gif/开心.gif', size: 265, anchorY: 0.56, naturalFacing: 1, weight: 5 },
+          { src: 'gif/超开心.gif', size: 190, anchorY: 0.56, naturalFacing: 1, weight: 3 },
+          { src: 'gif/送你花花.gif', size: 200, anchorY: 0.56, naturalFacing: 1, weight: 2 },
+        ],
+      },
+      tantrum: { src: 'gif/哭泣.gif', size: 185, anchorY: 0.56, naturalFacing: 1 },
+      stopTantrum: { src: 'gif/停下耍无赖.gif', size: 190, anchorY: 0.56, naturalFacing: 1 },
+      fallback: { src: 'gif/开心哼歌.gif', size: 180, anchorY: 0.54, naturalFacing: 1 },
+    };
+
+    const puppySprites = Object.fromEntries(
+      Object.entries(PUPPY_SPRITE_CONFIG).map(([mood, cfg]) => {
+        if (cfg.variants) {
+          return [mood, {
+            ...cfg,
+            variants: cfg.variants.map((variant) => {
+              const img = new Image();
+              img.src = variant.src;
+              return { ...variant, img };
+            }),
+          }];
+        }
+        const img = new Image();
+        img.src = cfg.src;
+        return [mood, { ...cfg, img }];
+      })
+    );
+
+    function chooseSpriteVariant(mood) {
+      const sprite = puppySprites[mood];
+      if (!sprite?.variants) return;
+      const totalWeight = sprite.variants.reduce((sum, variant) => sum + (variant.weight ?? 1), 0);
+      let cursor = Math.random() * totalWeight;
+      const index = sprite.variants.findIndex((variant) => {
+        cursor -= variant.weight ?? 1;
+        return cursor <= 0;
+      });
+      state.spriteVariants[mood] = index >= 0 ? index : 0;
+    }
+
+    function selectedSpriteVariant(mood) {
+      const sprite = puppySprites[mood];
+      if (!sprite?.variants) return null;
+      const index = state.spriteVariants[mood] ?? 0;
+      return sprite.variants[index] || sprite.variants[0];
+    }
+
+    function currentPuppySprite() {
+      if (state.playEvent?.type === 'tantrum') return puppySprites.tantrum;
+      if (state.playEvent?.type === 'stopTantrum') return puppySprites.stopTantrum;
+      const sprite = puppySprites[puppy.mood] || puppySprites.fallback;
+      if (sprite.variants) {
+        return selectedSpriteVariant(puppy.mood);
+      }
+      return sprite;
+    }
+
+    const PUPPY_SCREEN_OFFSET_Y = -45;
+
+    function drawPuppy() {
+      const sprite = currentPuppySprite();
+      const bounceY = Math.abs(puppy.bounce) * -8 * (puppy.mood === 'run' ? 1 : 0.45);
+      const drawH = sprite.size;
+      const aspect = sprite.img.naturalWidth && sprite.img.naturalHeight ? sprite.img.naturalWidth / sprite.img.naturalHeight : 1;
+      const drawW = drawH * aspect;
+      const anchorY = sprite.anchorY ?? 0.55;
+
+      if (puppySpriteEl.dataset.src !== sprite.src) {
+        puppySpriteEl.src = sprite.src;
+        puppySpriteEl.dataset.src = sprite.src;
+      }
+      puppySpriteEl.style.left = `${(puppy.x / state.width) * 100}%`;
+      puppySpriteEl.style.top = `${((puppy.y + bounceY + PUPPY_SCREEN_OFFSET_Y) / state.height) * 100}%`;
+      puppySpriteEl.style.width = `${(drawW / state.width) * 100}%`;
+      puppySpriteEl.style.setProperty('--puppy-anchor-y', `${-anchorY * 100}%`);
+      // 按每张 GIF 的原始朝向决定是否镜像：开心跑过来.gif 默认朝左。
+      const naturalFacing = sprite.naturalFacing ?? 1;
+      puppySpriteEl.style.setProperty('--puppy-facing', puppy.facing === naturalFacing ? '1' : '-1');
+    }
+
+    // ====== 粒子（尘土 / 爱心） ======
+    function spawnDust(x, y) {
+      state.particles.push({
+        type: 'dust',
+        x, y,
+        vx: (Math.random() - 0.5) * 1.5 - puppy.facing * 0.6,
+        vy: -Math.random() * 1.2 - 0.4,
+        life: 1,
+        size: 4 + Math.random() * 4,
+      });
+    }
+    function spawnHeart(x, y) {
+      state.particles.push({
+        type: 'heart',
+        x: x + (Math.random() - 0.5) * 30,
+        y,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: -1.4 - Math.random() * 0.6,
+        life: 1,
+        size: 8 + Math.random() * 6,
+        rot: (Math.random() - 0.5) * 0.6,
+      });
+    }
+    function spawnFlowerBurst(x, y) {
+      for (let i = 0; i < 4; i++) {
+        state.particles.push({
+          type: 'flower',
+          x: x + (Math.random() - 0.5) * 46,
+          y: y + (Math.random() - 0.5) * 34,
+          vx: (Math.random() - 0.5) * 1.1,
+          vy: -1.2 - Math.random() * 0.8,
+          life: 1,
+          size: 8 + Math.random() * 5,
+          rot: Math.random() * Math.PI,
+        });
+      }
+    }
+    function updateAndDrawParticles() {
+      const ctx = mctx;
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.04;
+        p.life -= p.type === 'dust' ? 0.025 : 0.012;
+        if (p.life <= 0) { state.particles.splice(i, 1); continue; }
+        ctx.save();
+        if (p.type === 'dust') {
+          ctx.globalAlpha = p.life * 0.55;
+          ctx.fillStyle = '#d8c8b0';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (p.type === 'heart') {
+          ctx.globalAlpha = p.life;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = '#ff7aa3';
+          ctx.shadowColor = '#ff7aa3';
+          ctx.shadowBlur = 12;
+          drawHeartShape(ctx, p.size);
+          ctx.fill();
+        } else if (p.type === 'flower') {
+          ctx.globalAlpha = p.life;
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          drawFlowerShape(ctx, p.size);
+        }
+        ctx.restore();
+      }
+    }
+    function drawHeartShape(ctx, s) {
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.3);
+      ctx.bezierCurveTo(s, -s * 0.6, s * 1.2, s * 0.4, 0, s);
+      ctx.bezierCurveTo(-s * 1.2, s * 0.4, -s, -s * 0.6, 0, s * 0.3);
+      ctx.closePath();
+    }
+
+    function drawFlowerShape(ctx, s) {
+      ctx.fillStyle = '#9bdcff';
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < 5; i++) {
+        const a = (Math.PI * 2 * i) / 5;
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(a) * s * 0.45, Math.sin(a) * s * 0.45, s * 0.34, s * 0.48, a, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#fff1a8';
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function spawnBubble(x, y, text) {
+      state.bubbles.push({ x, y, vy: -0.6, life: 1, text });
+    }
+    function updateAndDrawBubbles() {
+      const ctx = mctx;
+      for (let i = state.bubbles.length - 1; i >= 0; i--) {
+        const b = state.bubbles[i];
+        b.x += Math.sin(b.life * 5) * 0.3;
+        b.y += b.vy;
+        b.life -= 0.012;
+        if (b.life <= 0) { state.bubbles.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, b.life * 1.5);
+        // 气泡背景
+        const bubbleFontSize = 22;
+        ctx.font = `bold ${bubbleFontSize}px -apple-system, "PingFang SC", sans-serif`;
+        const w = ctx.measureText(b.text).width + 31;
+        const h = 37;
+        ctx.fillStyle = 'rgba(255, 245, 230, 0.9)';
+        ctx.strokeStyle = 'rgba(255, 179, 138, 0.7)';
+        ctx.lineWidth = 2.5;
+        roundRect(ctx, b.x - w / 2, b.y - h / 2, w, h, 19);
+        ctx.fill();
+        ctx.stroke();
+        // 文字
+        ctx.fillStyle = '#5a3a20';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.text, b.x, b.y);
+        ctx.restore();
+      }
+    }
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
+    // ====== 启动摄像头 ======
+    async function start() {
+      try {
+        setLoader(20, '请求摄像头权限…');
+        statusText.textContent = '请求摄像头权限…';
+        // 先拿摄像头权限再下载模型，避免首屏黑屏
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: false,
+        });
+        video.srcObject = stream;
+            await new Promise((resolve) => {
+          if (video.readyState >= 2) resolve();
+          else video.onloadedmetadata = () => resolve();
+        });
+            setLoader(45, '下载手部识别模型（约 13MB）…');
+
+        if (typeof hands.initialize === 'function') {
+          await hands.initialize();
+        }
+        setLoader(80, '模型加载完成，启动相机循环…');
+
+        let firstFrameDone = false;
+        const onceReady = () => {
+          if (firstFrameDone) return;
+          firstFrameDone = true;
+          setLoader(100, '准备完毕，撒欢儿啦！');
+          setTimeout(() => loading.classList.add('hide'), 300);
+        };
+        hands.onResults((res) => {
+          onceReady();
+          onResults(res);
+        });
+
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 1280,
+          height: 720,
+        });
+        await camera.start();
+        statusText.textContent = '运行中';
+        statusBadge.classList.add('ok');
+
+        // 兜底：3 秒后没等到第一帧也强制隐藏
+        setTimeout(onceReady, 3000);
+      } catch (e) {
+        setLoader(100, '出错啦：' + (e?.message || e));
+        if (loaderBar) loaderBar.style.background = 'linear-gradient(90deg, #ff4d6d, #ff8c42)';
+        statusText.textContent = '摄像头启动失败：' + (e?.message || e);
+        loaderStep.textContent = '⚠️ 请在系统设置中允许摄像头访问后刷新';
+        console.error(e);
+      }
+    }
+    resize();
+    start();
+  </script>
+</body>
+</html>
