@@ -1,0 +1,597 @@
+:root {
+  --bg: #0a0a14;
+  --fg: #fff5f0;
+  --accent: #ffd86b;
+  --accent2: #ff8fb1;
+  --line: rgba(255, 255, 255, 0.85);
+  --line-glow: rgba(255, 216, 107, 0.7);
+  --muted: #b8a89a;
+  --judge-perfect: #6bff9b;
+  --judge-good: #ffd86b;
+  --judge-bad: #ff8fb1;
+  --judge-miss: #8a8a96;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  overflow: hidden;
+  height: 100%;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+#wrap {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+video {
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1);
+  visibility: hidden;
+}
+
+canvas {
+  position: absolute;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+}
+
+#fxCanvas { pointer-events: none; }
+
+/* ===== 5 条 lane 白狗：每条 lane 一个，y 由 lane 决定 ===== */
+.lane-puppy {
+  position: absolute;
+  left: 50%;
+  width: 9%;
+  height: auto;
+  z-index: 5;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.3)) grayscale(0.55);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+  will-change: opacity, filter, transform;
+}
+.lane-puppy.active {
+  opacity: 1;
+  filter: drop-shadow(0 0 18px rgba(255, 216, 107, 0.85)) grayscale(0);
+  transform: translate(-50%, -50%) scale(1.06);
+  animation: lanePuppyBounce 0.9s ease-in-out infinite;
+}
+@keyframes lanePuppyBounce {
+  0%, 100% { transform: translate(-50%, -50%) scale(1.06); }
+  50%      { transform: translate(-50%, -52%) scale(1.1); }
+}
+
+/* lane 充电条：每条 lane 各自一根 */
+.lane-charge-bar {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: 110px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 6;
+}
+.lane-charge-bar.show { opacity: 1; }
+.lane-charge-bar .fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffd86b, #ff8fb1);
+  box-shadow: 0 0 8px rgba(255, 216, 107, 0.6);
+  transition: width 0.08s linear;
+}
+
+/* ===== 白狗（玩家）：贴在中线上，y 跟食指 ===== */
+#whitePuppy {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11%;
+  height: auto;
+  z-index: 5;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.55));
+  transition: opacity 0.18s ease;
+  will-change: top;
+}
+
+/* ===== 黄狗（被治愈对象）：从右往左滑 ===== */
+.yellow-puppy {
+  position: absolute;
+  width: 10%;
+  height: auto;
+  z-index: 4;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  will-change: left, top, opacity;
+  transition: opacity 0.25s ease;
+}
+
+/* 中间交互态 GIF（hug/play/play2）：贴贴的时候双方融合成一只 */
+.duo-puppy {
+  position: absolute;
+  width: 16%;
+  height: auto;
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%) scale(1);
+  filter: drop-shadow(0 0 22px rgba(255, 216, 107, 0.65));
+  animation: duoPop 0.5s ease;
+}
+@keyframes duoPop {
+  0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0; }
+  70% { transform: translate(-50%, -50%) scale(1.08); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* ===== HUD ===== */
+.hud {
+  position: fixed;
+  top: 16px; left: 16px;
+  z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.badge {
+  background: rgba(20, 12, 24, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  display: inline-flex; align-items: center; gap: 8px;
+  width: fit-content;
+}
+.badge .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ffb84d;
+  box-shadow: 0 0 10px #ffb84d;
+}
+.badge.ok .dot { background: #6bff9b; box-shadow: 0 0 10px #6bff9b; }
+
+/* ===== 玩法面板（右上角，可折叠） ===== */
+#panel {
+  position: fixed;
+  top: 16px; right: 16px;
+  z-index: 10;
+  width: 280px;
+  background: rgba(20, 12, 24, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  pointer-events: auto;
+  overflow: hidden;
+}
+#panel button#panelToggle {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 14px;
+  text-align: left;
+  padding: 12px 16px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+#panel #panelContent {
+  padding: 0 16px 14px 16px;
+  max-height: 500px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+}
+#panel.collapsed #panelContent {
+  max-height: 0;
+  padding-top: 0; padding-bottom: 0;
+}
+#panel ul { margin: 0; padding-left: 18px; }
+#panel li { margin-bottom: 4px; color: #f0e0d0; }
+#panel li b { color: #fff; }
+#panel .small { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
+/* ===== 切歌按钮组 ===== */
+.track-picker {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 216, 107, 0.18);
+}
+.track-title {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.track-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.track-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f0e0d0;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+.track-btn:hover {
+  background: rgba(255, 216, 107, 0.12);
+  border-color: rgba(255, 216, 107, 0.4);
+  color: #fff5e0;
+}
+.track-btn.active {
+  background: linear-gradient(135deg, rgba(255, 216, 107, 0.85), rgba(255, 143, 177, 0.85));
+  color: #2a1a14;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 0 14px rgba(255, 216, 107, 0.4);
+}
+
+/* ===== 分数 / 连击（左下） ===== */
+#scoreboard {
+  position: fixed;
+  bottom: 24px; left: 24px;
+  z-index: 10;
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none;
+}
+.score-row {
+  background: rgba(20, 12, 24, 0.65);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 216, 107, 0.25);
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  color: #fff5e0;
+  min-width: 140px;
+}
+.score-row .num {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 18px;
+  margin-left: 6px;
+}
+.score-row .combo-num {
+  color: var(--accent2);
+  font-weight: 700;
+  font-size: 18px;
+  margin-left: 6px;
+}
+
+/* ===== 节奏判定（右下角） ===== */
+#judgement {
+  position: fixed;
+  right: 32px;
+  bottom: 28px;
+  z-index: 11;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.judge-text {
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-shadow: 0 0 24px currentColor;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.judge-text.show {
+  opacity: 1;
+  transform: scale(1);
+  animation: judgePop 0.6s ease forwards;
+}
+@keyframes judgePop {
+  0% { transform: scale(0.5); opacity: 0; }
+  20% { transform: scale(1.18); opacity: 1; }
+  60% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.05); opacity: 0; }
+}
+.judge-text.perfect { color: var(--judge-perfect); }
+.judge-text.good { color: var(--judge-good); }
+.judge-text.bad { color: var(--judge-bad); }
+.judge-text.miss { color: var(--judge-miss); }
+
+#judgeLast {
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(20, 12, 24, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 6px 12px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+
+/* ===== 充电条（跟随白狗位置） ===== */
+#chargeBar {
+  position: absolute;
+  width: 110px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  overflow: hidden;
+  z-index: 7;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  transform: translate(-50%, 0);
+  box-shadow: 0 0 14px rgba(255, 216, 107, 0.4);
+}
+#chargeBar.show { opacity: 1; }
+#chargeBar .fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  border-radius: 999px;
+  box-shadow: 0 0 12px var(--accent);
+  transition: width 0.05s linear;
+}
+
+/* ===== 中央 mood tag (温柔气泡) — 已废弃，保留 DOM 但隐藏 ===== */
+#moodTag {
+  display: none !important;
+}
+
+/* ===== 每只小狗自己的气泡（飘在头顶） ===== */
+.yellow-bubble {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+  user-select: none;
+  /* 默认锚点：自身底部中心，往上偏移到狗头顶 */
+  transform: translate(-50%, calc(-100% - 56px)) scale(0.85);
+  background: rgba(20, 12, 24, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 216, 107, 0.35);
+  color: #fff5e0;
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 18px rgba(255, 216, 107, 0.18);
+}
+.yellow-bubble::after {
+  /* 小尾巴指向小狗 */
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px; height: 10px;
+  background: rgba(20, 12, 24, 0.78);
+  border-right: 1px solid rgba(255, 216, 107, 0.35);
+  border-bottom: 1px solid rgba(255, 216, 107, 0.35);
+}
+.yellow-bubble.show {
+  opacity: 1;
+  transform: translate(-50%, calc(-100% - 56px)) scale(1);
+  animation: bubbleFloat 2.4s ease-in-out infinite;
+}
+@keyframes bubbleFloat {
+  0%, 100% { transform: translate(-50%, calc(-100% - 56px)) scale(1); }
+  50% { transform: translate(-50%, calc(-100% - 64px)) scale(1.02); }
+}
+/* 不同情绪用不同色调点缀 */
+.yellow-bubble[data-mood="cry"] { border-color: rgba(140, 180, 220, 0.45); }
+.yellow-bubble[data-mood="cry"]::after { border-color: rgba(140, 180, 220, 0.45); }
+.yellow-bubble[data-mood="tantrum"] { border-color: rgba(255, 120, 120, 0.5); }
+.yellow-bubble[data-mood="tantrum"]::after { border-color: rgba(255, 120, 120, 0.5); }
+.yellow-bubble[data-mood="sad"] { border-color: rgba(180, 160, 200, 0.45); }
+.yellow-bubble[data-mood="sad"]::after { border-color: rgba(180, 160, 200, 0.45); }
+
+/* ===== 加载页 ===== */
+#loading {
+  position: fixed; inset: 0;
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 18px;
+  background: radial-gradient(circle at 50% 40%, #2a1a40 0%, #0a0a14 70%);
+  transition: opacity 0.5s ease;
+}
+#loading.hide { opacity: 0; pointer-events: none; }
+.loader-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 28px 36px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 18px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  min-width: 260px;
+}
+.magic-emoji {
+  font-size: 48px;
+  animation: wiggle 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(255, 216, 107, 0.6));
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-12deg) scale(1); }
+  50% { transform: rotate(18deg) scale(1.08); }
+}
+.loader-title {
+  font-size: 16px; font-weight: 600; color: #fff; letter-spacing: 0.5px;
+}
+.loader-step {
+  font-size: 13px; color: var(--muted); text-align: center; min-height: 18px;
+}
+.progress-track {
+  width: 240px; height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px; overflow: hidden;
+  position: relative;
+}
+.progress-bar {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  border-radius: 999px;
+  box-shadow: 0 0 12px rgba(255, 216, 107, 0.6);
+  transition: width 0.4s ease;
+}
+.loader-tip {
+  font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 4px;
+}
+
+/* ===== 开始按钮（首次需要用户交互后才能播放音频） ===== */
+#startOverlay {
+  position: fixed; inset: 0;
+  z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 20, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 0.4s ease;
+}
+#startOverlay.hide { opacity: 0; pointer-events: none; }
+#startBtn {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  color: #2a1a14;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 18px 38px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 32px rgba(255, 216, 107, 0.4);
+  transition: transform 0.2s ease;
+}
+#startBtn:hover { transform: scale(1.05); }
+
+/* ===== 音乐结束遮罩 ===== */
+#endOverlay {
+  position: fixed; inset: 0;
+  z-index: 95;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 20, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+#endOverlay.show { opacity: 1; }
+.end-card {
+  background: linear-gradient(160deg, rgba(40, 30, 50, 0.92), rgba(20, 15, 25, 0.92));
+  border: 1px solid rgba(255, 216, 107, 0.25);
+  border-radius: 22px;
+  padding: 36px 48px;
+  text-align: center;
+  color: #fff5e0;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 60px rgba(255, 216, 107, 0.15);
+  animation: endCardPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 90vw;
+}
+@keyframes endCardPop {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.end-emoji {
+  font-size: 64px;
+  margin-bottom: 8px;
+  animation: endEmojiBounce 1.6s ease-in-out infinite;
+}
+@keyframes endEmojiBounce {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  50%      { transform: translateY(-10px) rotate(3deg); }
+}
+.end-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #ffd86b, #ff8fb1);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 20px;
+}
+.end-stats {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  font-size: 16px;
+  margin-bottom: 18px;
+  color: rgba(255, 240, 220, 0.85);
+}
+.end-stats b {
+  color: #ffd86b;
+  font-size: 22px;
+  margin-left: 6px;
+  text-shadow: 0 0 12px rgba(255, 216, 107, 0.5);
+}
+.end-hint {
+  color: rgba(255, 240, 220, 0.55);
+  font-size: 12px;
+  margin-bottom: 22px;
+  letter-spacing: 1px;
+}
+#endRestartBtn {
+  background: linear-gradient(135deg, #ffd86b, #ff8fb1);
+  border: none;
+  color: #2a1a14;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 14px 32px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(255, 216, 107, 0.35);
+  transition: transform 0.2s ease;
+  font-family: inherit;
+}
+#endRestartBtn:hover { transform: scale(1.06); }

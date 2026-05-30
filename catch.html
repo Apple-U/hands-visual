@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐶 我会稳稳地接住你 · Catch You</title>
+  <link rel="stylesheet" href="styles/catch.css" />
+</head>
+<body>
+  <div id="stage">
+    <div id="wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="mainCanvas"></canvas>
+      <canvas id="fxCanvas"></canvas>
+      <!-- 白狗：贴在中线上，y 跟食指 -->
+      <img id="whitePuppy" src="gif/white/high.gif" alt="白色小狗" />
+      <!-- 充电条：悬浮在白狗下方 -->
+      <div id="chargeBar"><div class="fill" id="chargeFill"></div></div>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="badge" id="statusBadge"><span class="dot"></span><span id="statusText">摄像头初始化中…</span></div>
+    <div class="badge" id="handsBadge"><span class="dot"></span><span id="handsText">检测到 0 只手</span></div>
+  </div>
+
+  <div id="panel" class="collapsed">
+    <button id="panelToggle" type="button" aria-expanded="false" aria-controls="panelContent">🐶 玩法说明</button>
+    <div id="panelContent">
+      <ul>
+        <li>伸出 <b>食指 ☝️</b>，白狗会跟着你上下移动</li>
+        <li>黄狗从右往左飘来，到达 <b>中线</b> 时贴贴它</li>
+        <li>充电条满了 → <b>Perfect</b> 💎</li>
+        <li>贴一半 → <b>Good</b> ✨ / 来不及 → <b>Bad</b> 💔</li>
+        <li>没碰到 → <b>Miss</b> 🌙，狗子会失望地溜走</li>
+      </ul>
+      <div class="track-picker">
+        <div class="track-title">🎵 背景音乐</div>
+        <div class="track-options" id="trackOptions">
+          <button type="button" class="track-btn active" data-track="boyboyboybee">boyboyboybee</button>
+          <button type="button" class="track-btn" data-track="happyfly">happyfly</button>
+        </div>
+      </div>
+      <div class="small">提示：上下慢慢挪，跟着鼓点节奏走～ 🎵</div>
+    </div>
+  </div>
+
+  <div id="scoreboard">
+    <div class="score-row">分数<span class="num" id="scoreNum">0</span></div>
+    <div class="score-row">连击<span class="combo-num" id="comboNum">0</span></div>
+  </div>
+
+  <div id="judgement">
+    <div class="judge-text" id="judgeText"></div>
+    <div id="judgeLast">等待第一拍…</div>
+  </div>
+
+  <div id="moodTag"></div>
+
+  <!-- 背景音乐：本地 m4a，由 catch-mode.js 同步进行鼓点离线分析 -->
+  <audio id="bgm" src="music/boyboyboybee.m4a" preload="auto" crossorigin="anonymous"></audio>
+
+  <div id="loading">
+    <div class="loader-card">
+      <div class="magic-emoji">🐶</div>
+      <div class="loader-title">小狗们正在赶来…</div>
+      <div class="loader-step" id="loaderStep">连接 AI 模型中…</div>
+      <div class="progress-track"><div class="progress-bar" id="loaderBar"></div></div>
+      <div class="loader-tip">首次加载需下载约 13MB 模型，耐心等几秒哦 ✨</div>
+    </div>
+  </div>
+
+  <div id="startOverlay" class="hide" hidden>
+    <button id="startBtn" type="button">🎵 开始游戏</button>
+  </div>
+
+  <div id="endOverlay" hidden>
+    <div class="end-card">
+      <div class="end-emoji">🎉</div>
+      <div class="end-title">这一曲，落幕啦～</div>
+      <div class="end-stats">
+        <div>本局得分 <b id="endScore">0</b></div>
+        <div>最高连击 <b id="endMaxCombo">0</b></div>
+      </div>
+      <div class="end-hint">挑一首歌再来一局吧 🎵</div>
+      <button id="endRestartBtn" type="button">🔁 再来一次</button>
+    </div>
+  </div>
+
+  <script src="https://registry.npmmirror.com/@mediapipe/camera_utils/latest/files/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://registry.npmmirror.com/@mediapipe/hands/latest/files/hands.js" crossorigin="anonymous"></script>
+  <script src="modules/precomputed-beats.js"></script>
+  <script src="modules/catch-mode.js"></script>
+
+  <script>
+    'use strict';
+
+    // ===== DOM =====
+    const video = document.getElementById('video');
+    const mainCanvas = document.getElementById('mainCanvas');
+    const fxCanvas = document.getElementById('fxCanvas');
+    const whitePuppyEl = document.getElementById('whitePuppy');
+    const chargeBarEl = document.getElementById('chargeBar');
+    const chargeFillEl = document.getElementById('chargeFill');
+    const judgeTextEl = document.getElementById('judgeText');
+    const judgeLastEl = document.getElementById('judgeLast');
+    const scoreNumEl = document.getElementById('scoreNum');
+    const comboNumEl = document.getElementById('comboNum');
+    const moodTagEl = document.getElementById('moodTag');
+    const wrapEl = document.getElementById('wrap');
+    const audioEl = document.getElementById('bgm');
+
+    const mctx = mainCanvas.getContext('2d');
+    const fctx = fxCanvas.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    const statusBadge = document.getElementById('statusBadge');
+    const handsText = document.getElementById('handsText');
+    const loading = document.getElementById('loading');
+    const loaderStep = document.getElementById('loaderStep');
+    const loaderBar = document.getElementById('loaderBar');
+
+    const panel = document.getElementById('panel');
+    const panelToggle = document.getElementById('panelToggle');
+    panelToggle.addEventListener('click', () => {
+      const collapsed = panel.classList.toggle('collapsed');
+      panelToggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+
+    const startOverlay = document.getElementById('startOverlay');
+    const startBtn = document.getElementById('startBtn');
+
+    function setLoader(percent, text) {
+      if (loaderBar) loaderBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+      if (text && loaderStep) loaderStep.textContent = text;
+    }
+    setLoader(8, '加载脚本中…');
+
+    // ===== state =====
+    // LANE_Y_RATIOS: 5 条横向轨道的 y 中心，归一化到 [0,1]
+    const LANE_COUNT = 5;
+    const LANE_Y_RATIOS = [0.2, 0.35, 0.5, 0.65, 0.8];
+
+    const state = {
+      width: 1280,
+      height: 720,
+      hands: [],
+      fingerTip: null,            // 兼容老代码：第一根伸出的手指 tip
+      fingerTips: [],             // 所有伸出的手指 tip（已镜像到屏幕坐标）
+      activeLanes: new Set(),     // 当前激活的 lane 索引（0~4）
+      laneCount: LANE_COUNT,
+      laneYRatios: LANE_Y_RATIOS,
+      lastSeenTime: 0,
+    };
+
+    function resize() {
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      fxCanvas.width = state.width;
+      fxCanvas.height = state.height;
+    }
+
+    function flipX(x) { return 1 - x; }
+    function lmToPx(lm) { return { x: flipX(lm.x) * state.width, y: lm.y * state.height }; }
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    // 食指可跟踪（参考 puppy.html 宽容判定）
+    function isPointing(lm) {
+      const wrist = lm[0];
+      const tip = lm[8];
+      const pip = lm[6];
+      const mcp = lm[5];
+      const indexReach = dist(tip, wrist);
+      const pipReach = dist(pip, wrist);
+      const tipFromMcp = dist(tip, mcp);
+      const pipFromMcp = dist(pip, mcp);
+      return indexReach > pipReach * 0.92 || tipFromMcp > pipFromMcp * 1.05;
+    }
+
+    // ===== MediaPipe =====
+    const hands = new Hands({
+      locateFile: (file) => `https://registry.npmmirror.com/@mediapipe/hands/latest/files/${file}`,
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.4,
+      minTrackingConfidence: 0.25,
+    });
+
+    function onResults(results) {
+      if (!results.image) return;
+      if (results.image.width && results.image.width !== state.width) {
+        state.width = results.image.width;
+        state.height = results.image.height;
+        resize();
+      }
+
+      const allHands = results.multiHandLandmarks || [];
+      const tips = [];
+      // 5 个手指 landmark 末端（4=拇指, 8=食指, 12=中指, 16=无名, 20=小指）
+      const FINGER_TIP_IDX = [4, 8, 12, 16, 20];
+      const FINGER_PIP_IDX = [3, 6, 10, 14, 18];
+
+      for (const lm of allHands) {
+        if (!lm || !lm[0]) continue;
+        const wrist = lm[0];
+        for (let i = 0; i < 5; i++) {
+          const tipLm = lm[FINGER_TIP_IDX[i]];
+          const pipLm = lm[FINGER_PIP_IDX[i]];
+          if (!tipLm || !pipLm) continue;
+          // 拇指特殊处理；其他手指简单用 tip 离手腕距离 > pip 离手腕距离 判定伸出
+          const tipDist = dist(tipLm, wrist);
+          const pipDist = dist(pipLm, wrist);
+          const extended = i === 0
+            ? tipDist > pipDist * 1.05
+            : tipDist > pipDist * 1.02;
+          if (extended) tips.push(lmToPx(tipLm));
+        }
+      }
+
+      // 计算激活的 lane（按 y 坐标分配）
+      const activeLanes = new Set();
+      for (const tip of tips) {
+        const yRatio = tip.y / state.height;
+        // 找最近的 lane
+        let bestIdx = 0, bestDist = Infinity;
+        for (let i = 0; i < LANE_COUNT; i++) {
+          const d = Math.abs(LANE_Y_RATIOS[i] - yRatio);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        // 容差：y 偏离 lane 中心 < 1/(LANE_COUNT*2 - 0.5) 才算激活
+        if (bestDist < 0.12) activeLanes.add(bestIdx);
+      }
+
+      if (tips.length > 0) {
+        state.fingerTips = tips;
+        state.fingerTip = tips[0]; // 兼容老代码
+        state.activeLanes = activeLanes;
+        state.lastSeenTime = performance.now();
+      } else if (performance.now() - state.lastSeenTime > 800) {
+        state.fingerTips = [];
+        state.fingerTip = null;
+        state.activeLanes = new Set();
+      }
+      handsText.textContent = `${allHands.length} 只手 · ${tips.length} 根手指`;
+
+      // 绘制摄像头背景（镜像彩色）
+      const w = state.width, h = state.height;
+      mctx.save();
+      mctx.translate(w, 0);
+      mctx.scale(-1, 1);
+      mctx.drawImage(results.image, 0, 0, w, h);
+      mctx.restore();
+
+      // 绘制 5 条横向轨道
+      drawLanes();
+      // 绘制中线
+      drawCenterLine();
+      // 绘制每根手指的标记
+      drawFingerMarks();
+    }
+
+    function drawLanes() {
+      const w = state.width, h = state.height;
+      mctx.save();
+      for (let i = 0; i < LANE_COUNT; i++) {
+        const ly = LANE_Y_RATIOS[i] * h;
+        const isActive = state.activeLanes.has(i);
+        // 轨道背景条带（淡）
+        mctx.fillStyle = isActive
+          ? 'rgba(255, 216, 107, 0.10)'
+          : 'rgba(255, 255, 255, 0.025)';
+        mctx.fillRect(0, ly - 32, w, 64);
+        // 轨道中线（虚线）
+        mctx.strokeStyle = isActive
+          ? 'rgba(255, 216, 107, 0.65)'
+          : 'rgba(255, 255, 255, 0.18)';
+        mctx.lineWidth = isActive ? 2 : 1;
+        mctx.setLineDash([8, 10]);
+        if (isActive) {
+          mctx.shadowColor = '#ffd86b';
+          mctx.shadowBlur = 12;
+        }
+        mctx.beginPath();
+        mctx.moveTo(0, ly);
+        mctx.lineTo(w, ly);
+        mctx.stroke();
+        mctx.setLineDash([]);
+        mctx.shadowBlur = 0;
+      }
+      mctx.restore();
+    }
+
+    function drawCenterLine() {
+      const w = state.width, h = state.height;
+      const cx = w / 2;
+      mctx.save();
+      // 主线：渐变发光
+      const grad = mctx.createLinearGradient(cx, 0, cx, h);
+      grad.addColorStop(0, 'rgba(255, 216, 107, 0.0)');
+      grad.addColorStop(0.2, 'rgba(255, 216, 107, 0.85)');
+      grad.addColorStop(0.8, 'rgba(255, 143, 177, 0.85)');
+      grad.addColorStop(1, 'rgba(255, 143, 177, 0.0)');
+      mctx.strokeStyle = grad;
+      mctx.lineWidth = 3;
+      mctx.shadowColor = 'rgba(255, 216, 107, 0.7)';
+      mctx.shadowBlur = 18;
+      mctx.beginPath();
+      mctx.moveTo(cx, 0);
+      mctx.lineTo(cx, h);
+      mctx.stroke();
+      mctx.shadowBlur = 0;
+
+      // 判定区淡淡的扇区
+      mctx.fillStyle = 'rgba(255, 216, 107, 0.06)';
+      mctx.fillRect(cx - 80, 0, 160, h);
+      mctx.restore();
+    }
+
+    function drawFingerMarks() {
+      if (!state.fingerTips || state.fingerTips.length === 0) return;
+      const t = performance.now() / 1000;
+      mctx.save();
+      for (const tip of state.fingerTips) {
+        const x = tip.x, y = tip.y;
+        for (let i = 0; i < 3; i++) {
+          const phase = (t * 1.4 + i * 0.33) % 1;
+          const r = 12 + phase * 36;
+          mctx.beginPath();
+          mctx.arc(x, y, r, 0, Math.PI * 2);
+          mctx.strokeStyle = `rgba(255, 216, 107, ${0.35 * (1 - phase)})`;
+          mctx.lineWidth = 2;
+          mctx.stroke();
+        }
+        mctx.fillStyle = '#fff';
+        mctx.shadowColor = '#ffd86b';
+        mctx.shadowBlur = 18;
+        mctx.beginPath();
+        mctx.arc(x, y, 6, 0, Math.PI * 2);
+        mctx.fill();
+        mctx.shadowBlur = 0;
+      }
+      mctx.restore();
+    }
+
+    hands.onResults(onResults);
+
+    // ===== 启动 =====
+    let catchGame = null;
+    async function start() {
+      try {
+        setLoader(20, '请求摄像头权限…');
+        statusText.textContent = '请求摄像头权限…';
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 }, audio: false,
+        });
+        video.srcObject = stream;
+        await new Promise((resolve) => {
+          if (video.readyState >= 2) resolve();
+          else video.onloadedmetadata = () => resolve();
+        });
+        setLoader(45, '下载手部识别模型（约 13MB）…');
+        if (typeof hands.initialize === 'function') {
+          await hands.initialize();
+        }
+        setLoader(80, '模型就绪，启动相机循环…');
+
+        let firstFrameDone = false;
+        const onceReady = () => {
+          if (firstFrameDone) return;
+          firstFrameDone = true;
+          setLoader(100, '准备完毕，🐶 开始接住它们！');
+          setTimeout(() => {
+            loading.classList.add('hide');
+            // 显示开始按钮以触发音频
+            startOverlay.hidden = false;
+            startOverlay.classList.remove('hide');
+          }, 300);
+        };
+        hands.onResults((res) => { onceReady(); onResults(res); });
+
+        const camera = new Camera(video, {
+          onFrame: async () => { await hands.send({ image: video }); },
+          width: 1280, height: 720,
+        });
+        await camera.start();
+        statusText.textContent = '运行中';
+        statusBadge.classList.add('ok');
+        setTimeout(onceReady, 3000);
+      } catch (e) {
+        setLoader(100, '出错啦：' + (e?.message || e));
+        if (loaderBar) loaderBar.style.background = 'linear-gradient(90deg, #ff4d6d, #ff8c42)';
+        statusText.textContent = '摄像头启动失败：' + (e?.message || e);
+        loaderStep.textContent = '⚠️ 请在系统设置中允许摄像头访问后刷新';
+        console.error(e);
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      startOverlay.classList.add('hide');
+      setTimeout(() => { startOverlay.hidden = true; }, 400);
+      catchGame = window.CatchMode.init({
+        wrapEl, whitePuppyEl, chargeBarEl, chargeFillEl,
+        judgeTextEl, judgeLastEl, scoreNumEl, comboNumEl, moodTagEl,
+        audioEl, fxCanvas, mainCanvas,
+        stateRef: state,
+      });
+      catchGame.start();
+    });
+
+    // ===== 音乐结束提示 =====
+    const endOverlay = document.getElementById('endOverlay');
+    const endScoreEl = document.getElementById('endScore');
+    const endMaxComboEl = document.getElementById('endMaxCombo');
+    const endRestartBtn = document.getElementById('endRestartBtn');
+
+    audioEl.loop = false; // 不再循环，让 ended 事件能触发
+    audioEl.addEventListener('ended', () => {
+      if (!catchGame) return;
+      endScoreEl.textContent = String(catchGame.game?.score ?? 0);
+      endMaxComboEl.textContent = String(catchGame.game?.maxCombo ?? 0);
+      endOverlay.hidden = false;
+      requestAnimationFrame(() => endOverlay.classList.add('show'));
+    });
+
+    endRestartBtn.addEventListener('click', () => {
+      endOverlay.classList.remove('show');
+      setTimeout(() => { endOverlay.hidden = true; }, 350);
+      // 拿当前选中的轨道再开一局
+      const activeBtn = document.querySelector('.track-btn.active');
+      const trackId = activeBtn?.dataset.track || 'boyboyboybee';
+      audioEl.currentTime = 0;
+      if (catchGame?.switchTrack) catchGame.switchTrack(trackId);
+      audioEl.play().catch(() => {});
+    });
+
+    // ===== 切歌：右上角面板按钮 =====
+    document.getElementById('trackOptions').addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.track-btn');
+      if (!btn) return;
+      const trackId = btn.dataset.track;
+      const map = window.PRECOMPUTED_BEATMAPS || {};
+      const trackInfo = map[trackId];
+      if (!trackInfo) return;
+
+      // UI 高亮
+      document.querySelectorAll('.track-btn').forEach((b) => b.classList.toggle('active', b === btn));
+
+      // 切音频源
+      const wasPlaying = !audioEl.paused;
+      audioEl.pause();
+      audioEl.src = trackInfo.file;
+      audioEl.currentTime = 0;
+      audioEl.load();
+
+      // 通知 catch-mode 切谱面（如果游戏已经在跑）
+      if (catchGame && typeof catchGame.switchTrack === 'function') {
+        catchGame.switchTrack(trackId);
+      }
+
+      if (wasPlaying || catchGame) {
+        const tryPlay = audioEl.play();
+        if (tryPlay && typeof tryPlay.catch === 'function') {
+          tryPlay.catch((e) => console.warn('切歌后播放失败：', e));
+        }
+      }
+    });
+
+    resize();
+    start();
+  </script>
+</body>
+</html>
