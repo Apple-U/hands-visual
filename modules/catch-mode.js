@@ -26,30 +26,116 @@
     },
     {
       mood: 'sad',
-      gif: 'gif/roll-in-sad.gif',
+      gif: 'gif/cry2.gif',
       label: '失落',
       bubbles: ['今天不太顺…', '心情有点糟…', '唉…'],
     },
     {
       mood: 'tantrum',
-      gif: 'gif/stop-tantrum.gif',
+      gif: 'gif/fever.gif',
       label: '生气',
-      bubbles: ['气死啦！', '哼！', '别管我！'],
+      bubbles: ['生病了', '哼！', '别管我！'],
     },
   ];
 
-  const HAPPY_GIFS = ['gif/happy.gif', 'gif/super-happy.gif', 'gif/happy-run.gif'];
-  const DUO_GIFS = ['gif/two/hug.gif', 'gif/two/play.gif', 'gif/two/play2.gif'];
+  const HAPPY_GIFS = ['gif/super-happy.gif'];
+  const DUO_GIFS = ['gif/two/hug.gif', 'gif/two/naughty.gif', 'gif/two/play2.gif','gif/two/play.gif'];
+  // 接住瞬间专属：固定使用"贴贴拥抱"画面，作为接住的标志性表达
+  const HUG_GIF = 'gif/two/hug.gif';
+  // 屏幕中央 hero 放大动画的候选：剔除 hug.gif，避免和轨道上的接住表演重复
+  const HERO_GIFS = DUO_GIFS.filter((g) => g !== HUG_GIF);
   const WHITE_PUPPY_GIF = 'gif/white/high.gif';
+  // 没接住时统一显示 angry
+  const ANGRY_GIF = 'gif/angry.gif';
 
-  const SUCCESS_BUBBLES = ['被你治愈啦！💛', '今天也是好日子！', '谢谢你～', '心情亮起来了！', '好暖呀～'];
-  const FAIL_BUBBLES = ['唉…就这样吧', '下次再说吧…', '溜走了…', '没赶上呀…'];
-  const MID_CHARGING_BUBBLES = ['再贴一会儿嘛～', '感觉好暖…', '快好啦～', '别走呀！'];
+  // ===== GIF 单图尺寸覆盖（width %，相对 #wrap）=====
+  // 用 gif-debug.html 调好后，把 “复制配置” 的结果粘到这里就好。
+  const GIF_SIZE_OVERRIDES = {
+    'gif/white/high.gif': 9,
+    'gif/bored.gif': 13,
+    'gif/cry.gif': 10,
+    'gif/cry2.gif': 10,
+    'gif/stop-tantrum.gif': 10,
+    'gif/angry.gif': 10,
+    'gif/happy.gif': 14.5,
+    'gif/super-happy.gif': 10,
+    'gif/happy-run.gif': 10,
+    'gif/happy-walk.gif': 10,
+    'gif/happy-humming.gif': 10,
+    'gif/fever.gif': 10,
+    'gif/close-up.gif': 7,
+    'gif/wait-ball.gif': 14.5,
+    'gif/gift-flower.gif': 10.5,
+    'gif/two/hug.gif': 24,
+    'gif/two/naughty.gif': 16,
+    'gif/two/play2.gif': 24,
+  };
+
+  function gifKey(src) {
+    if (!src) return '';
+    try {
+      const u = new URL(src, window.location.href);
+      return u.pathname.replace(/^\//, '').replace(/^.*?(gif\/)/, '$1');
+    } catch (_) {
+      return src;
+    }
+  }
+
+  function applyGifSize(el, src) {
+    const w = GIF_SIZE_OVERRIDES[gifKey(src ?? el.src)];
+    if (typeof w === 'number') el.style.width = w + '%';
+  }
+
+  function setGifSrc(el, newSrc) {
+    el.src = newSrc;
+    applyGifSize(el, newSrc);
+  }
+
+  // ====== 小狗情绪文案池（按"小狗的感受"而非"玩家的得分"命名） ======
+  // 设计原则：
+  //   - 站在小狗的视角描述这一刻的情绪，不站在系统的视角评判玩家
+  //   - 短句 + 拟声 + 动作感，保持小奶狗语气
+  //   - 失败也不丧气，依然是撒娇语气，避免治愈游戏出现"打分感"
+
+  // 贴到主人那一刻：满足、撒娇式开心
+  const PUPPY_HUG_BUBBLES = [
+    '汪汪汪🐶!',
+    '贴贴成功啦!',
+    '尾巴摇飞啦❤️~',
+    '你是我的大可爱呀~',
+    '你最好啦!💛',
+    '好喜欢你呀!💛',
+    '心都化啦~',
+    '和你在一起无敌开心！！',
+  ];
+  // 没追上主人：失落但不丧气，依然在撒娇
+  const PUPPY_MISS_BUBBLES = [
+    '哎呀…',
+    '没追上啦…',
+    '溜走啦…',
+    '汪…',
+    '下一只我一定接住!',
+    '差一点点~',
+    '呜…',
+    '等下一只…',
+  ];
+  // 正在蹭你（贴贴中）：撒娇要更多、不让你走
+  const PUPPY_NUZZLE_BUBBLES = [
+    '别动嘛~',
+    '再贴一会儿!',
+    '蹭蹭中~',
+    '尾巴在摇啦!',
+    '舒服~',
+    '快充满啦!',
+    '别走别走~',
+    '汪~别松手!',
+    '再来一点点~',
+  ];
 
   // 黄狗从屏幕右侧出现到达中线所用秒数（决定移动速度）
   const TRAVEL_TIME = 3.2;
   // 判定区半宽（像素，逻辑坐标系）
-  const JUDGE_HALF_WIDTH = 80;
+  const JUDGE_HALF_WIDTH = 140; // 判定窗口（左右各 140px，原 80）
   // 同 lane 内白狗 y 与黄狗 y 距离阈值（其实激活后基本不会用到，留兜底）
   const Y_TOLERANCE = 80;
   // 5 条 lane（与 catch.html 中保持一致）
@@ -65,6 +151,20 @@
 
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
   function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
+
+  // 过滤掉间隔太近的鼓点：黄狗到达中线后还要充电 280~700ms，
+  // 锁死困难模式（0.5s 间隔，几乎不过滤，原汁原味鼓点轰炸）
+  const HARD_GAP = 0.5;
+  function filterTooClose(beatmap) {
+    if (!Array.isArray(beatmap) || beatmap.length < 2) return beatmap;
+    const out = [beatmap[0]];
+    for (let i = 1; i < beatmap.length; i++) {
+      const t = beatmap[i].time ?? beatmap[i];
+      const prev = out[out.length - 1].time ?? out[out.length - 1];
+      if (t - prev >= HARD_GAP) out.push(beatmap[i]);
+    }
+    return out;
+  }
 
   // ====== 离线分析音频鼓点 ======
   // 思路：解码音频 → 低通过滤（保留低频鼓点）→ 滑动窗口能量峰值 → 时间戳数组
@@ -194,21 +294,29 @@
 
     const fctx = fxCanvas.getContext('2d');
 
-    // ====== 5 条 lane 各自的白狗 + 充电条 ======
-    // 老的 #whitePuppy 隐藏，由 catch-mode 接管 5 个 lane 白狗
+    // ====== lane 白狗 + 充电条（按需懒加载，仅 active lane 显示） ======
+    // 老的 #whitePuppy 隐藏，由 catch-mode 接管 lane 白狗
     if (whitePuppyEl) whitePuppyEl.style.display = 'none';
     if (chargeBarEl) chargeBarEl.style.display = 'none';
 
-    const lanePuppies = []; // Array<{el, chargeBar, chargeFill, y}>
-    for (let i = 0; i < LANE_COUNT; i++) {
+    const lanePuppies = new Array(LANE_COUNT); // 稀疏数组，按需创建
+    function ensureLanePuppy(i) {
+      if (lanePuppies[i]) return lanePuppies[i];
       const ly = LANE_Y_RATIOS[i];
       const el = document.createElement('img');
       el.className = 'lane-puppy';
       el.src = WHITE_PUPPY_GIF;
       el.alt = `lane-${i}`;
+      el.dataset.gif = 'white/high.gif';
       el.style.top = `${ly * 100}%`;
       el.style.left = '50%';
+      // 初始隐藏，由主循环按 active 控制
+      el.style.opacity = '0';
+      el.style.visibility = 'hidden';
+      applyGifSize(el);
+      el.classList.add('lane-puppy-spawn');
       wrapEl.appendChild(el);
+      requestAnimationFrame(() => el.classList.remove('lane-puppy-spawn'));
 
       const bar = document.createElement('div');
       bar.className = 'lane-charge-bar';
@@ -218,8 +326,13 @@
       bar.appendChild(fill);
       wrapEl.appendChild(bar);
 
-      lanePuppies.push({ el, chargeBar: bar, chargeFill: fill, y: ly });
+      const lp = { el, chargeBar: bar, chargeFill: fill, y: ly, currentY: ly };
+      lanePuppies[i] = lp;
+      return lp;
     }
+    // 默认中央 lane（index 2）：作为没有手指时的默认陪伴小狗
+    const DEFAULT_LANE = 2;
+    ensureLanePuppy(DEFAULT_LANE);
 
     const game = {
       startedAt: 0,
@@ -231,15 +344,20 @@
       whiteY: 0,
       chargingPuppy: null,
       // 优先使用预计算谱面（scripts/analyze-beats.mjs 离线生成），没有就用 fallback
-      beatmap: (window.PRECOMPUTED_BEATMAP && window.PRECOMPUTED_BEATMAP.length > 6)
-        ? window.PRECOMPUTED_BEATMAP
-        : FALLBACK_BEATMAP,
+      beatmap: filterTooClose(
+        (window.PRECOMPUTED_BEATMAP && window.PRECOMPUTED_BEATMAP.length > 6)
+          ? window.PRECOMPUTED_BEATMAP
+          : FALLBACK_BEATMAP,
+      ),
       // 视觉特效
       particles: [],
       ripples: [],     // 中线鼓点脉冲
       starbursts: [],  // 治愈星星爆发
       shakeUntil: 0,
       shakeIntensity: 0,
+      // 暂停状态
+      paused: false,
+      pausedAt: 0,
     };
 
     const sfx = createSfxEngine();
@@ -251,6 +369,7 @@
       img.className = 'yellow-puppy';
       img.src = moodCfg.gif;
       img.alt = moodCfg.label;
+      applyGifSize(img);
       wrapEl.appendChild(img);
 
       // 随机分到一条 lane，y 锁定
@@ -272,7 +391,8 @@
         laneIdx, // 关键：黄狗绑定的轨道索引
         mood: moodCfg.mood,
         moodCfg,
-        chargeDuration: beat.duration * 1000,
+        // 充电时长：把鼓点 duration 减半，最低 280ms，最高 700ms
+        chargeDuration: clamp(beat.duration * 500, 280, 700),
         chargeProgress: 0,
         state: 'incoming',
         resolved: false,
@@ -314,58 +434,45 @@
       sfx.tick();
     }
 
-    // ====== 黄狗拖尾粒子 ======
-    function spawnTrail(yellow, x) {
-      game.particles.push({
-        type: 'trail',
-        x: x + (Math.random() - 0.5) * 14,
-        y: yellow.y + (Math.random() - 0.5) * 14,
-        vx: 1.5 + Math.random() * 0.8,
-        vy: (Math.random() - 0.5) * 0.6,
-        life: 1,
-        decay: 0.04,
-        size: 4 + Math.random() * 4,
-        hue: 35 + Math.random() * 20,
-      });
+    // ====== 黄狗拖尾粒子（已禁用以提升性能）======
+    function spawnTrail(_yellow, _x) {
+      // no-op: 拖尾粒子已移除，减少 Canvas 绘制压力
     }
 
-    // ====== 治愈成功星星爆发 ======
+    // ====== 治愈成功爆发：贴贴成功时撒一圈温柔的星星
+    // level 来自判定（perfect / good / 其他），用来决定数量和大小，但视觉风格统一温和，
+    // 不让玩家感觉自己在被打分——只是小狗心情好的程度不一样。 ======
     function spawnStarburst(x, y, level) {
-      const count = level === 'perfect' ? 28 : 16;
+      // 数量：perfect 多一些，good 少一些；都不要太多，避免"金币爆炸"的奖励感
+      const count = level === 'perfect' ? 14 : (level === 'good' ? 10 : 7);
+      // 暖色相区间：粉橙 → 浅黄 → 奶白偏粉，避免冷色，保持治愈感
+      const hueBase = 30; // 偏暖
+      const hueRange = 30;
       for (let i = 0; i < count; i++) {
-        const a = (Math.PI * 2 * i) / count + Math.random() * 0.3;
-        const sp = 4 + Math.random() * 6;
+        const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+        // perfect 速度稍快、星星稍大；good 收一点
+        const speed = (level === 'perfect' ? 3.2 : 2.4) + Math.random() * 1.4;
+        const size = (level === 'perfect' ? 9 : 7) + Math.random() * 4;
         game.particles.push({
           type: 'star',
-          x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp,
-          life: 1,
-          decay: 0.012 + Math.random() * 0.008,
-          size: 6 + Math.random() * 6,
-          hue: level === 'perfect' ? 50 + Math.random() * 25 : 320 + Math.random() * 30,
-          rot: Math.random() * Math.PI,
-          spin: (Math.random() - 0.5) * 0.2,
-        });
-      }
-      // 大爆发光环
-      game.starbursts.push({ x, y, r: 30, maxR: level === 'perfect' ? 320 : 200, life: 1, hue: level === 'perfect' ? 55 : 320 });
-    }
-
-    // ====== 失败碎屑（小水滴 / 灰心） ======
-    function spawnFailDrops(x, y) {
-      for (let i = 0; i < 8; i++) {
-        game.particles.push({
-          type: 'drop',
-          x: x + (Math.random() - 0.5) * 30,
-          y: y + (Math.random() - 0.5) * 18,
-          vx: (Math.random() - 0.5) * 1.6 - 1,
-          vy: 0.5 + Math.random() * 1.2,
+          x: x + (Math.random() - 0.5) * 14,
+          y: y + (Math.random() - 0.5) * 10,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 0.6, // 整体略向上，给"飞起来"的感觉
           life: 1,
           decay: 0.018,
-          size: 4 + Math.random() * 3,
+          size,
+          rot: Math.random() * Math.PI * 2,
+          spin: (Math.random() - 0.5) * 0.18,
+          hue: hueBase + Math.random() * hueRange, // 30~60 度，暖色
         });
       }
+    }
+
+    // ====== 治愈系：失败时不再撒水滴粒子，避免"被打分"的视觉负反馈。
+    // 失败的情绪由小狗自己（angry.gif + 委屈气泡）表达，画面不再叠泪滴粒子。 ======
+    function spawnFailDrops(_x, _y) {
+      // no-op: 治愈游戏不要让失败有"特效惩罚"，留给角色自己表达
     }
 
     // ====== 屏幕震动（combo 高时触发） ======
@@ -382,19 +489,12 @@
       const centerX = stateRef.width / 2;
 
       let currentX;
-      if (yellow.exitMode === 'happyFly') {
-        const exitElapsed = now - yellow.exitStartAt;
-        const HOP_DURATION = 380;
-        if (exitElapsed < HOP_DURATION) {
-          const hopT = exitElapsed / HOP_DURATION;
-          currentX = yellow.exitStartX;
-          yellow.y = yellow.exitStartY - Math.abs(Math.sin(hopT * Math.PI * 3)) * 36;
-        } else {
-          const flyElapsed = exitElapsed - HOP_DURATION;
-          currentX = yellow.exitStartX + yellow.exitVx * flyElapsed;
-          yellow.y = yellow.exitStartY + yellow.exitVy * flyElapsed - 0.0006 * flyElapsed * flyElapsed;
-        }
-        if (currentX > stateRef.width + 200 || currentX < -200 || yellow.y < -200) {
+      if (yellow.exitMode === 'happySlide') {
+        // 治愈成功后：保留原速度从中线继续往左滑出屏幕
+        currentX = yellow.startX + yellow.speed * elapsed;
+        // 开心地小幅蹦跳
+        yellow.y = yellow.startY + Math.sin((now - yellow.spawnAt) * 0.012) * 10;
+        if (currentX < -150) {
           cleanupYellow(yellow);
           return false;
         }
@@ -436,7 +536,7 @@
               yellow.state = 'charging';
               if (now - yellow.bubbleShownAt > 1500) {
                 if (Math.random() < 0.45) {
-                  showYellowBubble(yellow, pick(MID_CHARGING_BUBBLES), now, 1200);
+                  showYellowBubble(yellow, pick(PUPPY_NUZZLE_BUBBLES), now, 1200);
                 }
               }
             }
@@ -458,18 +558,13 @@
       yellow.el.style.left = `${xPercent}%`;
       yellow.el.style.top = `${yPercent}%`;
 
-      // 飞走时朝向调整
-      if (yellow.exitMode === 'happyFly') {
-        yellow.el.style.transform = `translate(-50%, -50%) scaleX(-1) scale(${1 + Math.sin(elapsed * 0.02) * 0.1})`;
-      }
-
       // 同步气泡位置：跟着小狗头顶飘
       if (yellow.bubbleEl) {
         // 充电时气泡飘到该 lane 的白狗上方；其他时候跟黄狗头顶
         const lanePuppy = lanePuppies[yellow.laneIdx];
         const bubbleX = yellow.state === 'charging' ? stateRef.width / 2 : currentX;
         const bubbleY = yellow.state === 'charging' && lanePuppy
-          ? lanePuppy.y * stateRef.height
+          ? (lanePuppy.currentY ?? lanePuppy.y) * stateRef.height
           : yellow.y;
         yellow.bubbleEl.style.left = `${(bubbleX / stateRef.width) * 100}%`;
         yellow.bubbleEl.style.top = `${(bubbleY / stateRef.height) * 100}%`;
@@ -496,16 +591,21 @@
       if (activeDuoEl?.parentNode) activeDuoEl.parentNode.removeChild(activeDuoEl);
       activeDuoEl = null;
       // 恢复所有 lane 白狗显示
-      for (const lp of lanePuppies) lp.el.style.opacity = '';
+      for (const lp of lanePuppies) { if (lp) lp.el.style.opacity = ''; }
 
       const p = yellow.chargeProgress;
       let level, points;
-      if (p >= 0.95) { level = 'perfect'; points = 100; }
-      else if (p >= 0.6) { level = 'good'; points = 60; }
+      // 评级阈值放宽：更容易拿 perfect / good
+      if (p >= 0.7) { level = 'perfect'; points = 100; }
+      else if (p >= 0.35) { level = 'good'; points = 60; }
       else if (p > 0.05) { level = 'bad'; points = 20; }
       else { level = 'miss'; points = 0; }
 
       showJudge(level);
+      // 接住啦！屏幕中央炸裂一句温馨气泡词（perfect/good/bad 都给）
+      if (level !== 'miss') {
+        showCatchHero(pick(PUPPY_HUG_BUBBLES), level);
+      }
       sfx[level]();
 
       if (level === 'miss' || level === 'bad') {
@@ -521,22 +621,20 @@
 
       const cx = stateRef.width / 2;
       if (level === 'perfect' || level === 'good') {
-        yellow.el.src = pick(HAPPY_GIFS);
-        yellow.exitMode = 'happyFly';
-        yellow.exitStartAt = now;
-        yellow.exitStartX = cx;
-        yellow.exitStartY = yellow.y;
-        yellow.exitVx = 0.7 + Math.random() * 0.3;
-        yellow.exitVy = -0.55 - Math.random() * 0.25;
-        spawnStarburst(cx, yellow.y, level);
+        // 治愈成功：换成开心 GIF，继续按原速度从左边滑走（不再飞天）
+        setGifSrc(yellow.el, pick(HAPPY_GIFS));
+        yellow.exitMode = 'happySlide';
+        // 反馈层精简：保留屏幕震动 + 中央 hero 大图，去掉黄狗头顶气泡和星星粒子，
+        // 让"接住"的视觉表达集中在 hero 大图和轨道 hug.gif，不堆叠多种粒子/气泡。
         if (level === 'perfect') triggerShake(8, 280);
         else triggerShake(4, 180);
-        showYellowBubble(yellow, pick(SUCCESS_BUBBLES), now, 1600);
       } else {
+        // 没接住：换成 angry.gif，原速度滑走
+        setGifSrc(yellow.el, ANGRY_GIF);
         yellow.exitMode = 'sadSlide';
         spawnFailDrops(cx, yellow.y);
         if (level === 'miss') triggerShake(3, 200);
-        showYellowBubble(yellow, pick(FAIL_BUBBLES), now, 1500);
+        showYellowBubble(yellow, pick(PUPPY_MISS_BUBBLES), now, 1500);
       }
 
       if (game.chargingPuppy === yellow) game.chargingPuppy = null;
@@ -547,24 +645,27 @@
     function syncDuoOverlay() {
       if (game.chargingPuppy && game.chargingPuppy.state === 'charging') {
         const charging = game.chargingPuppy;
-        const lanePuppy = lanePuppies[charging.laneIdx];
+        const lanePuppy = ensureLanePuppy(charging.laneIdx);
         if (!activeDuoEl) {
           activeDuoEl = document.createElement('img');
           activeDuoEl.className = 'duo-puppy';
-          activeDuoEl.src = pick(DUO_GIFS);
+          // 轨道上的"接住"画面固定使用 hug.gif，让两狗贴贴成为接住的视觉签名
+          activeDuoEl.src = HUG_GIF;
+          applyGifSize(activeDuoEl);
           wrapEl.appendChild(activeDuoEl);
         }
         activeDuoEl.style.left = '50%';
-        activeDuoEl.style.top = `${(lanePuppy?.y ?? 0.5) * 100}%`;
+        activeDuoEl.style.top = `${(lanePuppy?.currentY ?? lanePuppy?.y ?? 0.5) * 100}%`;
         // 只隐藏当前 lane 的白狗，其他 lane 保持
         for (const lp of lanePuppies) {
+          if (!lp) continue;
           lp.el.style.opacity = lp === lanePuppy ? '0' : '';
         }
         if (charging.el) charging.el.style.opacity = '0';
       } else {
         if (activeDuoEl?.parentNode) activeDuoEl.parentNode.removeChild(activeDuoEl);
         activeDuoEl = null;
-        for (const lp of lanePuppies) lp.el.style.opacity = '';
+        for (const lp of lanePuppies) { if (lp) lp.el.style.opacity = ''; }
         for (const y of game.yellowPuppies) {
           if (y.state !== 'gone' && y.exitMode === undefined) {
             y.el.style.opacity = '1';
@@ -589,6 +690,32 @@
       judgeTimer = setTimeout(() => {
         judgeTextEl.classList.remove('show');
       }, 600);
+    }
+
+    // ===== 屏幕中央 · 接住成功的炸裂提示（温馨文字 + 放大 duo gif） =====
+    const catchHeroEl = document.getElementById('catchHero');
+    const catchHeroTextEl = catchHeroEl?.querySelector('.hero-text');
+    const catchHeroImgEl = catchHeroEl?.querySelector('.hero-img');
+    let heroTimer = null;
+    function showCatchHero(text, level) {
+      if (!catchHeroEl) return;
+      if (catchHeroTextEl) catchHeroTextEl.textContent = text;
+      if (catchHeroImgEl) {
+        // hero 放大动画从不含 hug 的候选里抽，避免和轨道上的"贴贴"表演视觉重复
+        const gifSrc = pick(HERO_GIFS);
+        // 加时间戳避免缓存让 GIF 不重新播放
+        catchHeroImgEl.src = `${gifSrc}?t=${performance.now() | 0}`;
+      }
+      catchHeroEl.className = '';
+      // 强制 reflow，让动画每次都能重新触发
+      // eslint-disable-next-line no-unused-expressions
+      catchHeroEl.offsetWidth;
+      catchHeroEl.classList.add('show');
+      if (level === 'perfect') catchHeroEl.classList.add('perfect');
+      clearTimeout(heroTimer);
+      heroTimer = setTimeout(() => {
+        catchHeroEl.classList.remove('show', 'perfect');
+      }, 1100);
     }
 
     let moodTagTimer = null;
@@ -721,7 +848,7 @@
       if (game.chargingPuppy && game.chargingPuppy.state === 'charging') {
         const cx = stateRef.width / 2;
         const lp = lanePuppies[game.chargingPuppy.laneIdx];
-        const cy = (lp?.y ?? 0.5) * stateRef.height;
+        const cy = (lp?.currentY ?? lp?.y ?? 0.5) * stateRef.height;
         const prog = game.chargingPuppy.chargeProgress;
         const pulse = 1 + Math.sin(now / 80) * 0.08;
         fctx.save();
@@ -761,15 +888,55 @@
     // ====== 主循环 ======
     let lastFrameAt = 0;
     function frame(now) {
+      if (game.paused) return; // 暂停时直接退出，由 resume() 重新启动
       const dt = lastFrameAt ? (now - lastFrameAt) : 16;
       lastFrameAt = now;
 
-      // 5 条 lane 白狗：根据 activeLanes 切换 active 类
+      // ===== lane 白狗渲染 =====
+      // 规则：
+      // 1. 没有手指时：仅显示中央默认 lane 的白狗，y 固定在 lane 中心
+      // 2. 有手指时：仅显示 active lane 的白狗，y 跟随该 lane 内手指 y
       const active = stateRef.activeLanes || new Set();
-      for (let i = 0; i < lanePuppies.length; i++) {
+      const laneFingerY = stateRef.laneFingerY || {};
+      const laneSide = stateRef.laneSide || {};
+      const noFinger = active.size === 0;
+      // 决定要显示的 lane 集合
+      const showSet = new Set(noFinger ? [DEFAULT_LANE] : active);
+      // 懒加载需要显示的 lane
+      for (const idx of showSet) ensureLanePuppy(idx);
+
+      for (let i = 0; i < LANE_COUNT; i++) {
         const lp = lanePuppies[i];
-        if (active.has(i)) lp.el.classList.add('active');
-        else lp.el.classList.remove('active');
+        if (!lp) continue;
+        const shouldShow = showSet.has(i);
+        if (shouldShow) {
+          // 计算目标 y 比例：有手指→跟手指，无手指→lane 中心
+          const targetY = (noFinger || laneFingerY[i] === undefined)
+            ? LANE_Y_RATIOS[i]
+            : laneFingerY[i];
+          // 平滑跟随（lerp）
+          lp.currentY = lp.currentY + (targetY - lp.currentY) * 0.35;
+          lp.el.style.top = `${lp.currentY * 100}%`;
+          lp.el.style.visibility = 'visible';
+          // 通过 active 类切换显示亮度
+          if (active.has(i)) lp.el.classList.add('active');
+          else lp.el.classList.remove('active');
+          // 根据手指所在屏幕一侧，给白狗打 data-side（用于 CSS 着色）
+          const side = laneSide[i];
+          if (side) {
+            lp.el.setAttribute('data-side', side);
+          } else {
+            lp.el.removeAttribute('data-side');
+          }
+          // 充电中的 lane opacity 由 syncDuoOverlay 控制，其他时候置 1
+          if (!game.chargingPuppy || game.chargingPuppy.laneIdx !== i) {
+            lp.el.style.opacity = '1';
+          }
+        } else {
+          lp.el.classList.remove('active');
+          lp.el.style.opacity = '0';
+          lp.el.style.visibility = 'hidden';
+        }
       }
 
       tickBeatmap(now);
@@ -780,6 +947,10 @@
           charging.chargeProgress + dt / charging.chargeDuration,
           0, 1
         );
+        // 充满电：立刻结算，不再等到滑过中线（用户体感"转完圈就消失"）
+        if (charging.chargeProgress >= 1 && !charging.resolved) {
+          resolveYellow(charging, now);
+        }
       }
 
       for (const y of game.yellowPuppies) updateYellow(y, now);
@@ -787,12 +958,16 @@
 
       // 显示当前 charging 黄狗所在 lane 的充电条
       for (const lp of lanePuppies) {
+        if (!lp) continue;
         lp.chargeBar.classList.remove('show');
         lp.chargeFill.style.width = '0%';
       }
       if (charging && charging.state === 'charging') {
         const lp = lanePuppies[charging.laneIdx];
         if (lp) {
+          // 充电条跟随白狗当前位置（白狗下方一点）
+          const cy = (lp.currentY ?? lp.y) * 100 + 8;
+          lp.chargeBar.style.top = `${cy}%`;
           lp.chargeBar.classList.add('show');
           lp.chargeFill.style.width = `${charging.chargeProgress * 100}%`;
         }
@@ -829,6 +1004,47 @@
       );
     }
 
+    // ====== 暂停 / 继续 ======
+    // 思路：记录暂停那一刻的时间戳，恢复时把所有"以 performance.now() 为基准的时间戳"整体平移
+    //      暂停时长 delta，这样黄狗、气泡、震动、ripple、乐谱推进都不会"飞过"。
+    function pause() {
+      if (game.paused) return;
+      game.paused = true;
+      game.pausedAt = performance.now();
+      // 暂停背景音乐
+      if (audioEl && !audioEl.paused) {
+        try { audioEl.pause(); } catch (_) {}
+      }
+    }
+    function resume() {
+      if (!game.paused) return;
+      const now = performance.now();
+      const delta = now - game.pausedAt;
+      game.paused = false;
+      game.pausedAt = 0;
+      // 整体平移所有时间戳
+      game.startedAt += delta;
+      if (game.shakeUntil) game.shakeUntil += delta;
+      for (const y of game.yellowPuppies) {
+        y.spawnAt += delta;
+        if (y.bubbleShownAt) y.bubbleShownAt += delta;
+        if (y.bubbleHideAt) y.bubbleHideAt += delta;
+        if (y.trailEmitAt) y.trailEmitAt += delta;
+      }
+      // 重置 lastFrameAt 让 dt 不会爆炸
+      lastFrameAt = 0;
+      // 恢复背景音乐
+      if (audioEl && audioEl.paused) {
+        const tryPlay = audioEl.play();
+        if (tryPlay && typeof tryPlay.catch === 'function') {
+          tryPlay.catch((e) => console.warn('恢复播放失败：', e));
+        }
+      }
+      // 重新启动主循环
+      requestAnimationFrame(frame);
+    }
+    function isPaused() { return game.paused; }
+
     // ====== 切歌：清场 + 换谱 + 重置时间轴 + 重置分数 ======
     function switchTrack(trackId) {
       const map = window.PRECOMPUTED_BEATMAPS || {};
@@ -849,6 +1065,7 @@
       activeDuoEl = null;
       // 恢复所有 lane 白狗显示
       for (const lp of lanePuppies) {
+        if (!lp) continue;
         lp.el.style.opacity = '';
         lp.chargeBar.classList.remove('show');
         lp.chargeFill.style.width = '0%';
@@ -862,14 +1079,14 @@
       game.combo = 0;
       game.maxCombo = 0;
       updateScoreboard();
-      // 切谱面 + 重置时间轴
-      game.beatmap = info.beatmap;
+      // 切谱面 + 重置时间轴（顺手把太密的鼓点过滤掉，避免重叠点不上）
+      game.beatmap = filterTooClose(info.beatmap);
       game.cursor = 0;
       game.startedAt = performance.now();
-      console.log(`[catch-mode] 已切到 ${trackId}：${info.beatmap.length} 拍`);
+      console.log(`[catch-mode] 已切到 ${trackId}：${info.beatmap.length} → ${game.beatmap.length} 拍`);
     }
 
-    return { start, switchTrack, game };
+    return { start, switchTrack, pause, resume, isPaused, game };
   }
 
   window.CatchMode = { init };

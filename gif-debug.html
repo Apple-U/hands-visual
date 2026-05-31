@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🛠️ GIF 尺寸调试器</title>
+  <style>
+    :root {
+      --bg: #0a0a14;
+      --panel: rgba(20, 12, 24, 0.78);
+      --accent: #ffd86b;
+      --accent2: #ff8fb1;
+      --muted: #b8a89a;
+      --line: rgba(255, 216, 107, 0.5);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg); color: #fff5f0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      height: 100%;
+      overflow: hidden;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      height: 100vh;
+    }
+
+    /* ===== 左侧控制面板 ===== */
+    .controls {
+      background: linear-gradient(180deg, #1a1226, #0a0a14);
+      border-right: 1px solid rgba(255, 216, 107, 0.15);
+      overflow-y: auto;
+      padding: 18px 16px 24px 16px;
+    }
+    .controls h1 {
+      font-size: 18px;
+      letter-spacing: 1px;
+      margin: 0 0 6px 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; background-clip: text;
+      color: transparent;
+    }
+    .controls .sub {
+      font-size: 12px; color: var(--muted); margin-bottom: 14px;
+    }
+    .stage-config {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      font-size: 12px;
+    }
+    .stage-config label {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 8px;
+    }
+    .stage-config label:last-child { margin-bottom: 0; }
+    .stage-config input[type="range"] { flex: 1; }
+    .stage-config .v { color: var(--accent); min-width: 48px; text-align: right; }
+
+    .row {
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 10px 12px 12px 12px;
+      margin-bottom: 10px;
+      transition: border-color 0.2s;
+    }
+    .row.active {
+      border-color: rgba(255, 216, 107, 0.55);
+      box-shadow: 0 0 0 1px rgba(255, 216, 107, 0.2), 0 6px 20px rgba(0,0,0,0.4);
+    }
+    .row .head {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .row .thumb {
+      width: 38px; height: 38px;
+      object-fit: contain;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .row .key {
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      word-break: break-all;
+      flex: 1;
+    }
+    .row .v {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 13px;
+      min-width: 52px; text-align: right;
+    }
+    .row input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .actions {
+      position: sticky;
+      bottom: 0;
+      background: linear-gradient(180deg, transparent, #0a0a14 30%);
+      padding-top: 14px;
+      margin-top: 8px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .actions button {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: #2a1a14;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .actions button.secondary {
+      background: rgba(255,255,255,0.08);
+      color: #fff5e0;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    .actions textarea {
+      width: 100%;
+      min-height: 100px;
+      max-height: 220px;
+      background: #06060c;
+      color: #ffd86b;
+      border: 1px solid rgba(255, 216, 107, 0.2);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 11px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      resize: vertical;
+    }
+
+    /* ===== 右侧预览区 ===== */
+    .preview {
+      position: relative;
+      background:
+        radial-gradient(circle at 50% 30%, #2a1a40 0%, #0a0a14 70%);
+      overflow: hidden;
+    }
+    .preview-header {
+      position: absolute; top: 12px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 5; pointer-events: none;
+      font-size: 12px; color: var(--muted);
+    }
+    .preview-header .badge {
+      background: rgba(20,12,24,0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 6px 12px; border-radius: 999px;
+      pointer-events: auto;
+    }
+    #wrap {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%; max-width: 1280px;
+      aspect-ratio: 16 / 9;
+      background:
+        repeating-linear-gradient(
+          45deg,
+          rgba(255,255,255,0.02) 0 12px,
+          rgba(255,255,255,0.04) 12px 24px
+        ),
+        #050510;
+      border: 1px solid rgba(255, 216, 107, 0.18);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 40px rgba(255,216,107,0.08);
+    }
+    /* 中线 */
+    #wrap::before {
+      content: '';
+      position: absolute;
+      left: 50%; top: 0; bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg,
+        transparent 0%,
+        rgba(255, 216, 107, 0.65) 20%,
+        rgba(255, 143, 177, 0.65) 80%,
+        transparent 100%);
+      box-shadow: 0 0 12px rgba(255,216,107,0.4);
+    }
+    /* 5 条 lane 标记 */
+    .lane-line {
+      position: absolute;
+      left: 0; right: 0;
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+      pointer-events: none;
+    }
+    .lane-line .label {
+      position: absolute;
+      left: 8px; top: -16px;
+      font-size: 10px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.5px;
+    }
+
+    .preview-img {
+      position: absolute;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.2));
+      transition: outline 0.18s ease, filter 0.18s ease;
+    }
+    .preview-img.active {
+      outline: 2px dashed rgba(255, 216, 107, 0.7);
+      outline-offset: 4px;
+      filter: drop-shadow(0 0 18px rgba(255, 216, 107, 0.7));
+      z-index: 10;
+    }
+
+    /* 滚动条 */
+    .controls::-webkit-scrollbar { width: 6px; }
+    .controls::-webkit-scrollbar-thumb {
+      background: rgba(255, 216, 107, 0.25);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <!-- ===== 左侧控制面板 ===== -->
+  <div class="controls">
+    <h1>🛠️ GIF 尺寸调试器</h1>
+    <div class="sub">拖滑块调每张 GIF 的 width (%, 相对 wrap)，搞定后点 “复制配置” 把结果发给开发者～</div>
+
+    <div class="stage-config">
+      <label>
+        <span>预览舞台宽度</span>
+        <input type="range" id="stageWidth" min="40" max="100" step="1" value="90" />
+        <span class="v" id="stageWidthV">90%</span>
+      </label>
+      <label>
+        <span>显示 5 条 Lane 参考线</span>
+        <input type="checkbox" id="showLanes" checked />
+      </label>
+      <label>
+        <span>所有 GIF 排成一排</span>
+        <input type="checkbox" id="layoutGrid" checked />
+      </label>
+    </div>
+
+    <div id="rowList"></div>
+
+    <div class="actions">
+      <button id="btnCopy">📋 复制配置 JS</button>
+      <button id="btnReset" class="secondary">↩️ 全部还原默认</button>
+      <textarea id="output" readonly placeholder="点 “复制配置” 后这里会出现完整 JS，发给开发者～"></textarea>
+    </div>
+  </div>
+
+  <!-- ===== 右侧预览区 ===== -->
+  <div class="preview">
+    <div class="preview-header">
+      <div class="badge">点左侧任意一行 → 高亮预览这只小狗</div>
+      <div class="badge">中线 / 5 条 Lane 参考线 已开启</div>
+    </div>
+    <div id="wrap"></div>
+  </div>
+</div>
+
+<script>
+  'use strict';
+
+  // ===== 默认尺寸配置（与 catch-mode.js 中 GIF_SIZE_OVERRIDES 同步） =====
+  const DEFAULT_SIZES = {
+    'gif/white/high.gif': 9,
+    'gif/bored.gif': 13,
+    'gif/cry.gif': 10,
+    'gif/cry2.gif': 10,
+    'gif/stop-tantrum.gif': 10,
+    'gif/angry.gif': 10,
+    'gif/happy.gif': 14.5,
+    'gif/super-happy.gif': 10,
+    'gif/happy-run.gif': 10,
+    'gif/happy-walk.gif': 10,
+    'gif/happy-humming.gif': 10,
+    'gif/fever.gif': 10,
+    'gif/close-up.gif': 7,
+    'gif/wait-ball.gif': 14.5,
+    'gif/gift-flower.gif': 10.5,
+    'gif/two/hug.gif': 24,
+    'gif/two/naughty.gif': 12,
+    'gif/two/play2.gif': 20,
+    'gif/two/play.gif': 20,
+  };
+
+  // 默认 lane 比例（与 catch-mode 一致）
+  const LANE_Y_RATIOS = [0.2, 0.35, 0.5, 0.65, 0.8];
+
+  // ===== state =====
+  const state = {
+    sizes: { ...DEFAULT_SIZES },
+    activeKey: null,
+  };
+
+  const wrapEl = document.getElementById('wrap');
+  const rowList = document.getElementById('rowList');
+  const stageWidthEl = document.getElementById('stageWidth');
+  const stageWidthV = document.getElementById('stageWidthV');
+  const showLanesEl = document.getElementById('showLanes');
+  const layoutGridEl = document.getElementById('layoutGrid');
+  const btnCopy = document.getElementById('btnCopy');
+  const btnReset = document.getElementById('btnReset');
+  const outputEl = document.getElementById('output');
+
+  // ===== 渲染 lane 参考线 =====
+  function renderLanes() {
+    wrapEl.querySelectorAll('.lane-line').forEach((n) => n.remove());
+    if (!showLanesEl.checked) return;
+    LANE_Y_RATIOS.forEach((r, i) => {
+      const line = document.createElement('div');
+      line.className = 'lane-line';
+      line.style.top = `${r * 100}%`;
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = `Lane ${i} · y=${(r * 100).toFixed(0)}%`;
+      line.appendChild(label);
+      wrapEl.appendChild(line);
+    });
+  }
+
+  // ===== 渲染所有预览 GIF =====
+  const previewMap = new Map(); // key -> img element
+  function renderPreviewImages() {
+    // 清空已有
+    for (const img of previewMap.values()) img.remove();
+    previewMap.clear();
+
+    const keys = Object.keys(state.sizes);
+    const grid = layoutGridEl.checked;
+
+    keys.forEach((key, idx) => {
+      const img = document.createElement('img');
+      img.className = 'preview-img';
+      img.src = key;
+      img.alt = key;
+      img.dataset.key = key;
+      if (grid) {
+        // 分散摆在 5 条 lane 上 + 横向均匀分布
+        const lane = idx % 5;
+        const col = Math.floor(idx / 5);
+        const totalCols = Math.ceil(keys.length / 5);
+        const x = ((col + 0.5) / totalCols) * 100;
+        const y = LANE_Y_RATIOS[lane] * 100;
+        img.style.left = `${x}%`;
+        img.style.top = `${y}%`;
+      } else {
+        // 全部叠在中线
+        img.style.left = '50%';
+        img.style.top = '50%';
+      }
+      img.style.width = `${state.sizes[key]}%`;
+      wrapEl.appendChild(img);
+      previewMap.set(key, img);
+    });
+  }
+
+  function updatePreviewSize(key) {
+    const img = previewMap.get(key);
+    if (img) img.style.width = `${state.sizes[key]}%`;
+  }
+
+  function setActive(key) {
+    state.activeKey = key;
+    // row 高亮
+    rowList.querySelectorAll('.row').forEach((r) => {
+      r.classList.toggle('active', r.dataset.key === key);
+    });
+    // img 高亮
+    for (const [k, img] of previewMap.entries()) {
+      img.classList.toggle('active', k === key);
+    }
+  }
+
+  // ===== 渲染左侧控制行 =====
+  function renderRows() {
+    rowList.innerHTML = '';
+    Object.keys(state.sizes).forEach((key) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.key = key;
+
+      const head = document.createElement('div');
+      head.className = 'head';
+      const thumb = document.createElement('img');
+      thumb.className = 'thumb';
+      thumb.src = key;
+      thumb.alt = '';
+      const keyEl = document.createElement('div');
+      keyEl.className = 'key';
+      keyEl.textContent = key;
+      const v = document.createElement('div');
+      v.className = 'v';
+      v.textContent = `${state.sizes[key]}%`;
+
+      head.appendChild(thumb);
+      head.appendChild(keyEl);
+      head.appendChild(v);
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '3';
+      slider.max = '40';
+      slider.step = '0.5';
+      slider.value = String(state.sizes[key]);
+
+      slider.addEventListener('input', () => {
+        const val = parseFloat(slider.value);
+        state.sizes[key] = val;
+        v.textContent = `${val}%`;
+        updatePreviewSize(key);
+      });
+      head.addEventListener('click', () => setActive(key));
+      slider.addEventListener('focus', () => setActive(key));
+
+      row.appendChild(head);
+      row.appendChild(slider);
+      rowList.appendChild(row);
+    });
+  }
+
+  // ===== 舞台宽度调整 =====
+  stageWidthEl.addEventListener('input', () => {
+    const v = parseInt(stageWidthEl.value, 10);
+    stageWidthV.textContent = `${v}%`;
+    wrapEl.style.width = `${v}%`;
+  });
+
+  showLanesEl.addEventListener('change', renderLanes);
+  layoutGridEl.addEventListener('change', renderPreviewImages);
+
+  // ===== 复制配置 =====
+  btnCopy.addEventListener('click', async () => {
+    const lines = ['  const GIF_SIZE_OVERRIDES = {'];
+    Object.keys(state.sizes).forEach((k) => {
+      lines.push(`    '${k}': ${state.sizes[k]},`);
+    });
+    lines.push('  };');
+    const text = lines.join('\n');
+    outputEl.value = text;
+    try {
+      await navigator.clipboard.writeText(text);
+      btnCopy.textContent = '✅ 已复制到剪贴板';
+      setTimeout(() => { btnCopy.textContent = '📋 复制配置 JS'; }, 1500);
+    } catch (_) {
+      outputEl.select();
+    }
+  });
+
+  // ===== 重置 =====
+  btnReset.addEventListener('click', () => {
+    state.sizes = { ...DEFAULT_SIZES };
+    renderRows();
+    renderPreviewImages();
+    outputEl.value = '';
+  });
+
+  // ===== 初始化 =====
+  renderRows();
+  renderLanes();
+  renderPreviewImages();
+</script>
+</body>
+</html>

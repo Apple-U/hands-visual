@@ -16,7 +16,7 @@ const OUT_PATH = resolve(REPO_ROOT, 'modules/precomputed-beats.js');
 
 // 配置：要分析哪些歌
 const TRACKS = [
-  { id: 'boyboyboybee', file: 'music/boyboyboybee.m4a' },
+  { id: 'boybee', file: 'music/boybee.mp3' },
   { id: 'happyfly', file: 'music/happyfly.mp3' },
 ];
 

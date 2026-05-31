@@ -24,20 +24,18 @@
     <div class="badge" id="handsBadge"><span class="dot"></span><span id="handsText">检测到 0 只手</span></div>
   </div>
 
-  <div id="panel" class="collapsed">
-    <button id="panelToggle" type="button" aria-expanded="false" aria-controls="panelContent">🐶 玩法说明</button>
+  <div id="panel">
+    <button id="panelToggle" type="button" aria-expanded="true" aria-controls="panelContent">🐶 玩法说明</button>
     <div id="panelContent">
       <ul>
         <li>伸出 <b>食指 ☝️</b>，白狗会跟着你上下移动</li>
-        <li>黄狗从右往左飘来，到达 <b>中线</b> 时贴贴它</li>
-        <li>充电条满了 → <b>Perfect</b> 💎</li>
-        <li>贴一半 → <b>Good</b> ✨ / 来不及 → <b>Bad</b> 💔</li>
-        <li>没碰到 → <b>Miss</b> 🌙，狗子会失望地溜走</li>
+        <li>左手食指 <b style="color:#5badff">蓝色轨道</b>💙 / 右手食指 <b style="color:#ff7a8a">红色轨道</b>💗</li>
+        <li>按 <b>空格</b> 或点 <b>⏸</b> 可暂停 / 继续</li>
       </ul>
       <div class="track-picker">
         <div class="track-title">🎵 背景音乐</div>
         <div class="track-options" id="trackOptions">
-          <button type="button" class="track-btn active" data-track="boyboyboybee">boyboyboybee</button>
+          <button type="button" class="track-btn active" data-track="boybee">boybee</button>
           <button type="button" class="track-btn" data-track="happyfly">happyfly</button>
         </div>
       </div>
@@ -50,15 +48,34 @@
     <div class="score-row">连击<span class="combo-num" id="comboNum">0</span></div>
   </div>
 
+  <!-- 暂停按钮（右下角） -->
+  <button id="pauseBtn" type="button" hidden title="暂停 / 继续">⏸</button>
+
+  <!-- 暂停遮罩 -->
+  <div id="pauseOverlay" hidden>
+    <div class="pause-card">
+      <div class="pause-emoji">🐶💤</div>
+      <div class="pause-title">小狗们先歇会儿～</div>
+      <div class="pause-hint">准备好了就继续接住它们吧</div>
+      <button id="resumeBtn" type="button">▶ 继续游戏</button>
+    </div>
+  </div>
+
   <div id="judgement">
     <div class="judge-text" id="judgeText"></div>
     <div id="judgeLast">等待第一拍…</div>
   </div>
 
+  <!-- 接住成功的全局炸裂提示：温馨文字 + 放大双狗动画 -->
+  <div id="catchHero">
+    <div class="hero-text"></div>
+    <img class="hero-img" alt="" />
+  </div>
+
   <div id="moodTag"></div>
 
   <!-- 背景音乐：本地 m4a，由 catch-mode.js 同步进行鼓点离线分析 -->
-  <audio id="bgm" src="music/boyboyboybee.m4a" preload="auto" crossorigin="anonymous"></audio>
+  <audio id="bgm" src="music/boybee.mp3" preload="auto" crossorigin="anonymous"></audio>
 
   <div id="loading">
     <div class="loader-card">
@@ -128,6 +145,9 @@
 
     const startOverlay = document.getElementById('startOverlay');
     const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const pauseOverlay = document.getElementById('pauseOverlay');
+    const resumeBtn = document.getElementById('resumeBtn');
 
     function setLoader(percent, text) {
       if (loaderBar) loaderBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
@@ -147,6 +167,7 @@
       fingerTip: null,            // 兼容老代码：第一根伸出的手指 tip
       fingerTips: [],             // 所有伸出的手指 tip（已镜像到屏幕坐标）
       activeLanes: new Set(),     // 当前激活的 lane 索引（0~4）
+      laneFingerY: {},            // 每条 lane 内对应的真实手指 y 比例（白狗跟随用）
       laneCount: LANE_COUNT,
       laneYRatios: LANE_Y_RATIOS,
       lastSeenTime: 0,
@@ -196,60 +217,126 @@
       }
 
       const allHands = results.multiHandLandmarks || [];
-      const tips = [];
-      // 5 个手指 landmark 末端（4=拇指, 8=食指, 12=中指, 16=无名, 20=小指）
-      const FINGER_TIP_IDX = [4, 8, 12, 16, 20];
-      const FINGER_PIP_IDX = [3, 6, 10, 14, 18];
+      const freshTips = [];
+      // 简化：只识别食指（landmark 8），最多两只手
+      // 之前支持 4 根手指（食/中/无名/小指）太难，常常误激活别的 lane
 
-      for (const lm of allHands) {
+      const MAX_HANDS = 2;
+      const handsToUse = allHands.slice(0, MAX_HANDS);
+      for (const lm of handsToUse) {
         if (!lm || !lm[0]) continue;
         const wrist = lm[0];
-        for (let i = 0; i < 5; i++) {
-          const tipLm = lm[FINGER_TIP_IDX[i]];
-          const pipLm = lm[FINGER_PIP_IDX[i]];
-          if (!tipLm || !pipLm) continue;
-          // 拇指特殊处理；其他手指简单用 tip 离手腕距离 > pip 离手腕距离 判定伸出
-          const tipDist = dist(tipLm, wrist);
-          const pipDist = dist(pipLm, wrist);
-          const extended = i === 0
-            ? tipDist > pipDist * 1.05
-            : tipDist > pipDist * 1.02;
-          if (extended) tips.push(lmToPx(tipLm));
+        const indexTip = lm[8];
+        const indexPip = lm[6];
+        const indexMcp = lm[5];
+        if (!indexTip || !indexPip || !indexMcp) continue;
+        // 食指伸出判定（参考 puppy.html 的宽容版本）
+        // 之前只用 tip-to-wrist > pip-to-wrist * 1.05，对左手在画面底部、
+        // 食指水平指、手掌略侧的姿势非常苛刻 → tipDist 几乎 == pipDist 时持续判负，
+        // 表现为"左手在下方时卡住"。
+        // 改为双条件 OR：手腕参考更宽松 (0.92)，并加上 MCP 锚点的伸直判定。
+        const indexReach = dist(indexTip, wrist);
+        const pipReach = dist(indexPip, wrist);
+        const tipFromMcp = dist(indexTip, indexMcp);
+        const pipFromMcp = dist(indexPip, indexMcp);
+        const isPointing = indexReach > pipReach * 0.92 || tipFromMcp > pipFromMcp * 1.05;
+        if (isPointing) freshTips.push(lmToPx(indexTip));
+      }
+
+      // —— 按画面左/右半屏分别给每只手做 300ms 残影缓存 ——
+      // 修复：MediaPipe 偶尔会漏一帧某只手（尤其左手在边缘），导致 lane 高亮闪烁。
+      // 每帧把新识别到的食指按所在半屏写入对应 slot；缺失时若距上次出现 < 300ms，
+      // 复用上一次的位置，让左/右手丢一两帧也不会"消失"。
+      const HAND_GHOST_MS = 300;
+      const nowMs = performance.now();
+      if (!state.handCache) state.handCache = { left: null, right: null };
+      const halfWForCache = state.width / 2;
+      const freshBySide = { left: null, right: null };
+      for (const tip of freshTips) {
+        const side = tip.x < halfWForCache ? 'left' : 'right';
+        // 同一半屏出现两根手指（少见），取后出现的那根，避免和缓存抢位置
+        freshBySide[side] = tip;
+      }
+      const tips = [];
+      for (const side of ['left', 'right']) {
+        if (freshBySide[side]) {
+          state.handCache[side] = { tip: freshBySide[side], lastSeen: nowMs };
+          tips.push(freshBySide[side]);
+        } else if (state.handCache[side] && nowMs - state.handCache[side].lastSeen < HAND_GHOST_MS) {
+          // 缓存里有，且没超期：用上一帧位置补一根
+          tips.push(state.handCache[side].tip);
+        } else {
+          state.handCache[side] = null;
         }
       }
 
-      // 计算激活的 lane（按 y 坐标分配）
+      // 计算激活的 lane：每根手指都吸附到最近 lane（无容差，只要在画面里就算）
+      // laneFingerY: 记录每条 lane 内最贴近 lane 中心的手指 y 比例（用于白狗跟随手指）
+      // laneSide: 记录每条 lane 是被左屏（蓝）还是右屏（粉）的手指激活，用于配色
       const activeLanes = new Set();
+      const laneFingerY = {}; // { laneIdx: yRatio }
+      const laneBestDist = {}; // { laneIdx: bestDist }
+      const laneSide = {}; // { laneIdx: 'left' | 'right' }
+      const halfW = state.width / 2;
       for (const tip of tips) {
         const yRatio = tip.y / state.height;
-        // 找最近的 lane
+        const side = tip.x < halfW ? 'left' : 'right';
         let bestIdx = 0, bestDist = Infinity;
         for (let i = 0; i < LANE_COUNT; i++) {
           const d = Math.abs(LANE_Y_RATIOS[i] - yRatio);
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
-        // 容差：y 偏离 lane 中心 < 1/(LANE_COUNT*2 - 0.5) 才算激活
-        if (bestDist < 0.12) activeLanes.add(bestIdx);
+        activeLanes.add(bestIdx);
+        // 同 lane 多根手指时，取离 lane 中心最近那根（更稳定）
+        if (laneBestDist[bestIdx] === undefined || bestDist < laneBestDist[bestIdx]) {
+          laneBestDist[bestIdx] = bestDist;
+          laneFingerY[bestIdx] = yRatio;
+          laneSide[bestIdx] = side;
+        }
       }
 
       if (tips.length > 0) {
         state.fingerTips = tips;
         state.fingerTip = tips[0]; // 兼容老代码
         state.activeLanes = activeLanes;
+        state.laneFingerY = laneFingerY;
+        state.laneSide = laneSide;
         state.lastSeenTime = performance.now();
       } else if (performance.now() - state.lastSeenTime > 800) {
         state.fingerTips = [];
         state.fingerTip = null;
         state.activeLanes = new Set();
+        state.laneFingerY = {};
       }
       handsText.textContent = `${allHands.length} 只手 · ${tips.length} 根手指`;
 
-      // 绘制摄像头背景（镜像彩色）
+      // 绘制摄像头背景（镜像 + 左右分色：左蓝右粉，轻度灰度让色彩跳出来）
       const w = state.width, h = state.height;
+      const half = w / 2;
       mctx.save();
       mctx.translate(w, 0);
       mctx.scale(-1, 1);
+      // 50% 灰度 + 80% 亮度，保留人脸细节又不抢戏
+      mctx.filter = 'grayscale(0.5) brightness(0.85)';
       mctx.drawImage(results.image, 0, 0, w, h);
+      mctx.filter = 'none';
+      mctx.restore();
+
+      // 在灰度图上叠加左右色调（蓝 / 粉），用 multiply 让色彩"染"进灰度
+      mctx.save();
+      mctx.globalCompositeOperation = 'multiply';
+      // 左半：清澈天蓝（中心向边缘渐变，避免中线突变）
+      const leftGrad = mctx.createLinearGradient(0, 0, half, 0);
+      leftGrad.addColorStop(0, 'rgba(170, 210, 255, 1)');
+      leftGrad.addColorStop(1, 'rgba(220, 230, 245, 1)');
+      mctx.fillStyle = leftGrad;
+      mctx.fillRect(0, 0, half, h);
+      // 右半：暖粉珊瑚
+      const rightGrad = mctx.createLinearGradient(half, 0, w, 0);
+      rightGrad.addColorStop(0, 'rgba(225, 220, 235, 1)');
+      rightGrad.addColorStop(1, 'rgba(255, 195, 210, 1)');
+      mctx.fillStyle = rightGrad;
+      mctx.fillRect(half, 0, half, h);
       mctx.restore();
 
       // 绘制 5 条横向轨道
@@ -262,31 +349,47 @@
 
     function drawLanes() {
       const w = state.width, h = state.height;
+      const laneSide = state.laneSide || {};
+      // 左/右配色：跟白狗光晕、半屏渐变保持一致
+      const LEFT_RGB = '91, 173, 255';   // 清澈天蓝
+      const RIGHT_RGB = '255, 122, 138'; // 暖粉珊瑚
       mctx.save();
       for (let i = 0; i < LANE_COUNT; i++) {
         const ly = LANE_Y_RATIOS[i] * h;
         const isActive = state.activeLanes.has(i);
-        // 轨道背景条带（淡）
-        mctx.fillStyle = isActive
-          ? 'rgba(255, 216, 107, 0.10)'
-          : 'rgba(255, 255, 255, 0.025)';
-        mctx.fillRect(0, ly - 32, w, 64);
-        // 轨道中线（虚线）
-        mctx.strokeStyle = isActive
-          ? 'rgba(255, 216, 107, 0.65)'
-          : 'rgba(255, 255, 255, 0.18)';
-        mctx.lineWidth = isActive ? 2 : 1;
-        mctx.setLineDash([8, 10]);
-        if (isActive) {
-          mctx.shadowColor = '#ffd86b';
-          mctx.shadowBlur = 12;
-        }
+        // 根据这条 lane 的手指来自哪一侧选色
+        const side = laneSide[i];
+        const rgb = side === 'left' ? LEFT_RGB : side === 'right' ? RIGHT_RGB : null;
+
+        // ① 黄色运动中心线（常驻，黄狗就沿这条线滑过来 —— 虚线 + 强发光）
+        mctx.strokeStyle = 'rgba(255, 216, 107, 0.55)';
+        mctx.lineWidth = 2;
+        mctx.setLineDash([14, 10]);
+        mctx.shadowColor = 'rgba(255, 216, 107, 0.7)';
+        mctx.shadowBlur = 10;
         mctx.beginPath();
         mctx.moveTo(0, ly);
         mctx.lineTo(w, ly);
         mctx.stroke();
         mctx.setLineDash([]);
         mctx.shadowBlur = 0;
+
+        // ② 激活态再叠一层蓝/红色高亮（在黄色辅助线之上）
+        if (isActive && rgb) {
+          // 染色背景条带
+          mctx.fillStyle = `rgba(${rgb}, 0.18)`;
+          mctx.fillRect(0, ly - 32, w, 64);
+          // 染色实线高亮
+          mctx.strokeStyle = `rgba(${rgb}, 0.95)`;
+          mctx.lineWidth = 3;
+          mctx.shadowColor = `rgba(${rgb}, 1)`;
+          mctx.shadowBlur = 16;
+          mctx.beginPath();
+          mctx.moveTo(0, ly);
+          mctx.lineTo(w, ly);
+          mctx.stroke();
+          mctx.shadowBlur = 0;
+        }
       }
       mctx.restore();
     }
@@ -406,6 +509,35 @@
         stateRef: state,
       });
       catchGame.start();
+      // 游戏开始后再显示暂停按钮
+      pauseBtn.hidden = false;
+    });
+
+    // ===== 暂停 / 继续 =====
+    function doPause() {
+      if (!catchGame || catchGame.isPaused?.()) return;
+      catchGame.pause?.();
+      pauseOverlay.hidden = false;
+      requestAnimationFrame(() => pauseOverlay.classList.add('show'));
+      pauseBtn.textContent = '▶';
+    }
+    function doResume() {
+      if (!catchGame || !catchGame.isPaused?.()) return;
+      catchGame.resume?.();
+      pauseOverlay.classList.remove('show');
+      setTimeout(() => { pauseOverlay.hidden = true; }, 250);
+      pauseBtn.textContent = '⏸';
+    }
+    pauseBtn.addEventListener('click', () => {
+      if (catchGame?.isPaused?.()) doResume(); else doPause();
+    });
+    resumeBtn.addEventListener('click', doResume);
+    // 空格键也能暂停/继续，方便键盘党～
+    window.addEventListener('keydown', (ev) => {
+      if (ev.code !== 'Space' || ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT') return;
+      if (!catchGame) return;
+      ev.preventDefault();
+      if (catchGame.isPaused?.()) doResume(); else doPause();
     });
 
     // ===== 音乐结束提示 =====
@@ -428,7 +560,7 @@
       setTimeout(() => { endOverlay.hidden = true; }, 350);
       // 拿当前选中的轨道再开一局
       const activeBtn = document.querySelector('.track-btn.active');
-      const trackId = activeBtn?.dataset.track || 'boyboyboybee';
+      const trackId = activeBtn?.dataset.track || 'boybee';
       audioEl.currentTime = 0;
       if (catchGame?.switchTrack) catchGame.switchTrack(trackId);
       audioEl.play().catch(() => {});
@@ -443,8 +575,8 @@
       const trackInfo = map[trackId];
       if (!trackInfo) return;
 
-      // UI 高亮
-      document.querySelectorAll('.track-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      // UI 高亮（只在歌曲选择器内切换 active）
+      document.querySelectorAll('#trackOptions .track-btn').forEach((b) => b.classList.toggle('active', b === btn));
 
       // 切音频源
       const wasPlaying = !audioEl.paused;
@@ -468,6 +600,10 @@
 
     resize();
     start();
+
+    // ===== GIF 尺寸调试面板 =====
+    // 设计思路：所有可调 GIF 集中在一处，通过 CSS 自定义变量驱动 width/translateY
+    // ====== GIF 尺寸调试面板已移除（数值已写死在 catch-mode.js 的 GIF_SIZE_OVERRIDES）======
   </script>
 </body>
 </html>

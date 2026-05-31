@@ -63,7 +63,7 @@ hands_visual/
 ├── gif-debug.html          # GIF 尺寸调试面板（独立工具页）
 │
 ├── modules/
-│   ├── catch-mode.js       # catch.html 的核心逻辑（lane / 判定 / 黄狗 / 评级 / 难度）
+│   ├── catch-mode.js       # catch.html 的核心逻辑（lane / 判定 / 黄狗 / 评级）
 │   ├── fetch-mode.js       # fetch 模式（已通过 hidden 隐藏入口）
 │   └── precomputed-beats.js  # 预计算谱面：window.PRECOMPUTED_BEATMAPS
 │
@@ -161,7 +161,7 @@ npx serve
 
 | 文件                               | 标题                 | 玩法                                                                                                                                            |
 | -------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| [catch.html](catch.html)         | 🎵 我会稳稳地接住你        | 节奏大师玩法：黄狗沿 5 条 lane 从右往左飘，左右手食指控对应颜色白狗，到中央"贴住"小狗充电 280–700ms 即接住；带 Perfect/Good/Bad/Miss 评级、轻松/中等/困难三档难度切换、双歌切换（boyboyboybee / happyfly）、空格暂停 |
+| [catch.html](catch.html)         | 🎵 我会稳稳地接住你        | 节奏大师玩法：黄狗沿 5 条 lane 从右往左飘，左右手食指控对应颜色白狗，到中央"贴住"小狗充电 280–700ms 即接住；带 Perfect/Good/Bad/Miss 评级、双歌切换（boybee / happyfly）、空格暂停 |
 | [index.html](index.html)         | ✋ 手势魔法             | 双手 L 型框景（框内彩色框外灰度）· 五指张开放烟花 · 食指拇指捏合画彩虹 · 点赞冒爱心 · 比耶清屏                                                                                        |
 | [drums.html](drums.html)         | 🥁 Air Drums       | 把手放到鼓 pad 上，**手指朝掌心快速收拢**触发击打；双手可同时打不同的鼓                                                                                                      |
 | [guitar.html](guitar.html)       | 🎸 Hand Guitar     | 左手伸 1–7 根手指选根音（C/D/E/F/G/A/B），右手食指戳右下转盘选和弦类型，组合一变自动弹奏                                                                                         |

@@ -33,13 +33,43 @@ html, body {
 
 #wrap {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  /* 保持 16:9 比例，让 DOM 元素（白狗/黄狗）的百分比定位
+     和 canvas 上画的中心线对齐 */
+  aspect-ratio: 16 / 9;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
   overflow: hidden;
   background: #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+/* 左右半屏色彩区分：方便看清左/右两只食指的所在区域 */
+#wrap::before,
+#wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  pointer-events: none;
+  z-index: 1; /* 在 video/canvas 之上、UI 之下 */
+}
+#wrap::before {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 180, 255, 0.12) 0%,
+    rgba(120, 180, 255, 0.05) 60%,
+    rgba(120, 180, 255, 0) 100%
+  );
+}
+#wrap::after {
+  right: 0;
+  background: linear-gradient(
+    -90deg,
+    rgba(255, 168, 200, 0.12) 0%,
+    rgba(255, 168, 200, 0.05) 60%,
+    rgba(255, 168, 200, 0) 100%
+  );
 }
 
 video {
@@ -53,16 +83,28 @@ video {
 
 canvas {
   position: absolute;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  /* 既然 #wrap 已经是 16:9，canvas 内容（720x1280 也是 16:9）直接撑满即可，
+     不再用 max-width/contain 留边，避免 DOM 百分比和 canvas 内坐标错位 */
+  inset: 0;
+  width: 100%;
+  height: 100%;
   display: block;
+}
+
+/* 在摄像头画面之上、轨道/UI 之下，盖一层半透明灰色面纱
+   让蓝/红轨道、黄色辅助线、白狗的颜色更跳出来 */
+#mainCanvas::before { content: none; }
+#wrap > .scene-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(40, 40, 52, 0.55);
+  pointer-events: none;
+  z-index: 0; /* video 在最底层无 z-index，canvas 默认无 z-index 但晚画 → 用 0 让纱布介于 video 和 canvas 之间 */
 }
 
 #fxCanvas { pointer-events: none; }
 
-/* ===== 5 条 lane 白狗：每条 lane 一个，y 由 lane 决定 ===== */
+/* ===== lane 白狗：按需显示，y 跟随手指 ===== */
 .lane-puppy {
   position: absolute;
   left: 50%;
@@ -72,20 +114,40 @@ canvas {
   pointer-events: none;
   user-select: none;
   transform: translate(-50%, -50%);
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.3)) grayscale(0.55);
-  opacity: 0.45;
-  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
-  will-change: opacity, filter, transform;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.45));
+  opacity: 1;
+  transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease, top 0.05s linear;
+  will-change: opacity, filter, transform, top;
 }
 .lane-puppy.active {
-  opacity: 1;
-  filter: drop-shadow(0 0 18px rgba(255, 216, 107, 0.85)) grayscale(0);
+  filter: drop-shadow(0 0 18px rgba(255, 216, 107, 0.85));
   transform: translate(-50%, -50%) scale(1.06);
   animation: lanePuppyBounce 0.9s ease-in-out infinite;
+}
+/* 左侧手指激活 → 蓝色高光（清澈天蓝）*/
+.lane-puppy.active[data-side="left"] {
+  filter:
+    drop-shadow(0 0 22px rgba(91, 173, 255, 0.95))
+    drop-shadow(0 0 8px rgba(91, 173, 255, 0.6));
+}
+/* 右侧手指激活 → 珊瑚红高光（暖粉珊瑚）*/
+.lane-puppy.active[data-side="right"] {
+  filter:
+    drop-shadow(0 0 22px rgba(255, 122, 138, 0.95))
+    drop-shadow(0 0 8px rgba(255, 122, 138, 0.6));
 }
 @keyframes lanePuppyBounce {
   0%, 100% { transform: translate(-50%, -50%) scale(1.06); }
   50%      { transform: translate(-50%, -52%) scale(1.1); }
+}
+/* 新 lane 白狗入场动画（首帧的初始态） */
+.lane-puppy.lane-puppy-spawn {
+  animation: lanePuppySpawn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes lanePuppySpawn {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(-15deg); }
+  60%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15) rotate(6deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
 }
 
 /* lane 充电条：每条 lane 各自一根 */
@@ -200,7 +262,9 @@ canvas {
   font-size: 13px;
   line-height: 1.7;
   pointer-events: auto;
-  overflow: hidden;
+  /* 注意：去掉 overflow:hidden，否则当 panelContent 内容高于父容器时
+     超出部分会被裁掉，导致切歌按钮等元素看不见也点不到。
+     折叠效果由 #panelContent 自己的 overflow:hidden 控制。*/
 }
 #panel button#panelToggle {
   width: 100%;
@@ -216,7 +280,7 @@ canvas {
 }
 #panel #panelContent {
   padding: 0 16px 14px 16px;
-  max-height: 500px;
+  max-height: 800px;
   overflow: hidden;
   transition: max-height 0.3s ease, padding 0.3s ease;
 }
@@ -297,6 +361,107 @@ canvas {
   font-size: 18px;
   margin-left: 6px;
 }
+
+/* ===== 暂停按钮（右下角圆形悬浮按钮） ===== */
+#pauseBtn {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 12;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 216, 107, 0.45);
+  background: rgba(20, 12, 24, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--accent);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 14px rgba(255, 216, 107, 0.25);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+#pauseBtn:hover {
+  transform: scale(1.08);
+  background: rgba(40, 24, 40, 0.85);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.5), 0 0 22px rgba(255, 216, 107, 0.45);
+}
+#pauseBtn:active { transform: scale(0.95); }
+
+/* ===== 暂停遮罩 ===== */
+#pauseOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 6, 16, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none; /* 默认不吃点击 */
+  transition: opacity 0.25s ease;
+}
+/* hidden 属性时彻底从渲染流移除，避免遮挡其他按钮的点击 */
+#pauseOverlay[hidden] { display: none !important; }
+#pauseOverlay.show {
+  opacity: 1;
+  pointer-events: auto; /* show 时再恢复点击 */
+}
+#pauseOverlay .pause-card {
+  background: linear-gradient(160deg, rgba(40, 24, 48, 0.92), rgba(24, 14, 30, 0.92));
+  border: 1px solid rgba(255, 216, 107, 0.3);
+  border-radius: 24px;
+  padding: 32px 44px;
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55), 0 0 32px rgba(255, 216, 107, 0.18);
+  transform: translateY(8px) scale(0.96);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#pauseOverlay.show .pause-card { transform: translateY(0) scale(1); }
+#pauseOverlay .pause-emoji {
+  font-size: 52px;
+  margin-bottom: 8px;
+  animation: pauseFloat 2.4s ease-in-out infinite;
+}
+@keyframes pauseFloat {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+#pauseOverlay .pause-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff5e0;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+#pauseOverlay .pause-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+#pauseOverlay #resumeBtn {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #2a1a14;
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(255, 216, 107, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+#pauseOverlay #resumeBtn:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 8px 24px rgba(255, 216, 107, 0.5);
+}
+#pauseOverlay #resumeBtn:active { transform: scale(0.97); }
 .score-row .combo-num {
   color: var(--accent2);
   font-weight: 700;
@@ -304,7 +469,7 @@ canvas {
   margin-left: 6px;
 }
 
-/* ===== 节奏判定（右下角） ===== */
+/* ===== 节奏判定（右下角小记录） ===== */
 #judgement {
   position: fixed;
   right: 32px;
@@ -335,6 +500,63 @@ canvas {
   20% { transform: scale(1.18); opacity: 1; }
   60% { transform: scale(1); opacity: 1; }
   100% { transform: scale(1.05); opacity: 0; }
+}
+
+/* ===== 屏幕中央 · 接住成功的炸裂小狗动画（放大 duo gif + 上方一行温馨文字） ===== */
+#catchHero {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 14;
+  pointer-events: none;
+  width: clamp(220px, 32vw, 420px);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  filter: drop-shadow(0 12px 36px rgba(255, 143, 191, 0.55))
+          drop-shadow(0 0 24px rgba(255, 230, 128, 0.4));
+}
+#catchHero .hero-text {
+  font-size: clamp(28px, 4.2vw, 56px);
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow:
+    0 0 12px #ff8fbf,
+    0 0 24px #ff8fbf,
+    0 4px 0 rgba(0, 0, 0, 0.4);
+  -webkit-text-stroke: 1.5px #fff;
+}
+#catchHero .hero-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+#catchHero.show {
+  animation: catchHeroBlast 1.05s cubic-bezier(0.18, 1.2, 0.4, 1) forwards;
+}
+#catchHero.perfect {
+  filter: drop-shadow(0 12px 40px rgba(255, 211, 77, 0.7))
+          drop-shadow(0 0 28px rgba(255, 230, 128, 0.65));
+}
+#catchHero.perfect .hero-text {
+  text-shadow:
+    0 0 14px #ffe680,
+    0 0 28px #ffd34d,
+    0 4px 0 rgba(0, 0, 0, 0.4);
+  -webkit-text-stroke: 1.8px #fff8d6;
+}
+@keyframes catchHeroBlast {
+  0%   { transform: translate(-50%, -50%) scale(0.25) rotate(-12deg); opacity: 0; }
+  18%  { transform: translate(-50%, -50%) scale(1.25) rotate(6deg);   opacity: 1; }
+  35%  { transform: translate(-48%, -50%) scale(1.05) rotate(-3deg);  opacity: 1; }
+  55%  { transform: translate(-52%, -50%) scale(1.05) rotate(2deg);   opacity: 1; }
+  75%  { transform: translate(-50%, -50%) scale(1.0)  rotate(0deg);   opacity: 1; }
+  100% { transform: translate(-50%, -85%) scale(0.95) rotate(0deg);   opacity: 0; }
 }
 .judge-text.perfect { color: var(--judge-perfect); }
 .judge-text.good { color: var(--judge-good); }
@@ -515,6 +737,7 @@ canvas {
 #startBtn:hover { transform: scale(1.05); }
 
 /* ===== 音乐结束遮罩 ===== */
+#endOverlay[hidden] { display: none !important; }
 #endOverlay {
   position: fixed; inset: 0;
   z-index: 95;
@@ -523,9 +746,13 @@ canvas {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.35s ease;
 }
-#endOverlay.show { opacity: 1; }
+#endOverlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
 .end-card {
   background: linear-gradient(160deg, rgba(40, 30, 50, 0.92), rgba(20, 15, 25, 0.92));
   border: 1px solid rgba(255, 216, 107, 0.25);
@@ -595,3 +822,145 @@ canvas {
   font-family: inherit;
 }
 #endRestartBtn:hover { transform: scale(1.06); }
+
+/* ===== GIF 尺寸调试面板 ===== */
+#debugToggle {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 216, 107, 0.3);
+  background: rgba(20, 12, 24, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffd86b;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+#debugToggle:hover { transform: scale(1.08); box-shadow: 0 6px 18px rgba(255, 216, 107, 0.35); }
+#debugToggle.active {
+  background: linear-gradient(135deg, #ffd86b, #ff8fb1);
+  color: #2a1a14;
+  border-color: transparent;
+}
+
+#debugPanel[hidden] { display: none !important; }
+#debugPanel {
+  position: fixed;
+  right: 16px;
+  bottom: 72px;
+  z-index: 50;
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: rgba(20, 12, 24, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 216, 107, 0.25);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #fff5e0;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+.debug-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 700; font-size: 13px; color: var(--accent);
+  margin-bottom: 6px;
+  letter-spacing: 0.6px;
+}
+#debugClose {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 14px; cursor: pointer; padding: 2px 6px;
+}
+#debugClose:hover { color: #fff; }
+.debug-tip {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(255, 216, 107, 0.18);
+}
+.debug-row {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+.debug-row:last-child { border-bottom: none; margin-bottom: 4px; }
+.debug-row-label {
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.debug-slider-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.debug-slider-name {
+  color: var(--muted);
+  font-size: 11px;
+}
+.debug-slider-val {
+  color: var(--accent);
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.debug-slider-row input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  outline: none;
+}
+.debug-slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffd86b, #ff8fb1);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(255, 216, 107, 0.6);
+}
+.debug-actions {
+  display: flex; gap: 8px;
+  margin: 6px 0 8px;
+}
+.debug-actions button {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 216, 107, 0.25);
+  color: #fff5e0;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+.debug-actions button:hover {
+  background: rgba(255, 216, 107, 0.15);
+  border-color: rgba(255, 216, 107, 0.5);
+}
+#debugOutput {
+  width: 100%;
+  min-height: 90px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #b0e0a0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  padding: 8px;
+  resize: vertical;
+}
